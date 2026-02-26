@@ -5,8 +5,9 @@
 
 ## Shared Types
 
-```typescript
-// Define shared request/response types here
+```
+// Define shared request/response types here using the project's primary language
+// (TypeScript, Java, Go, Python, etc.). Use type/interface syntax native to the project.
 ```
 
 ## Endpoints

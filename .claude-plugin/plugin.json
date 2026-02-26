@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0",
+  "version": "0.5.0",
   "name": "dev-team",
   "description": "開發團隊：任務池架構（TL + challenger + workers），自取任務、事件驅動 QA、file scope 防護",
   "author": {

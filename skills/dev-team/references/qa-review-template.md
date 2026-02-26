@@ -4,10 +4,12 @@
 
 ```
 Review Task {task_id}: {task_description}
+Acceptance criteria: {acceptance_criteria}
 
 Files to review: {file_list}
 API contract: {contract_path}
 Project standards: {project_standards_summary}
+Relevant context: {key_interfaces_or_types_the_task_touches}
 
 ## Checklist
 

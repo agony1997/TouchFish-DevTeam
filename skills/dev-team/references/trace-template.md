@@ -11,11 +11,14 @@
 
 ## Requirement → Task Mapping
 
-| Req | Source | Task | Worker | Status | QA | Notes |
-|-----|--------|------|--------|--------|----|-------|
-| R01 | S1:{section} | T-01 | — | pending | — | |
+| Req | Source | Task | Worker | Status | QA | Fix Task | Notes |
+|-----|--------|------|--------|--------|----|----------|-------|
+| R01 | S1:{section} | T-01 | — | pending | — | — | |
 
-<!-- Status flow: pending → in-progress → done → qa-pass / qa-fail → fixed -->
+<!-- Status flow: pending → in-progress → done → qa-pass / qa-fail → fixed → qa-pass
+     qa-fail creates a Fix Task (T-xx-fix). Fill Fix Task column with the fix task ID.
+     If fix also fails QA, create another fix task (T-xx-fix2). -->
+<!-- One requirement may map to multiple tasks. Use multiple rows with same Req. -->
 
 ## API Contract Trace
 
