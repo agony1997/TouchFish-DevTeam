@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "name": "dev-team",
   "description": "開發團隊：多角色流水線協作（PM/開發者/QA），動態規模，混合 teammates + sub-agents",
   "author": {
