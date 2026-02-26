@@ -33,4 +33,4 @@
 |---|------|--------|-------------|
 
 <!-- Any contract change requires TL approval.
-     Worker → Leader → TL → decision → notify all leaders. -->
+     Worker → TL → decision → notify all workers. -->

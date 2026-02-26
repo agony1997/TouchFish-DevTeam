@@ -1,11 +1,10 @@
 ---
 name: dev-team
 description: >
-  開發團隊：多角色流水線協作，由 Team Lead（Opus）充當 PM，
-  指揮 explore-leader、pg-leader、qa-leader（均 Opus）分組運作。
-  pg 組 workers 用 teammates（Sonnet）支援互相協調，
-  explore/qa 組 workers 用 sub-agents（Sonnet）獨立執行。
-  支援動態規模調整、API 契約優先、流水線開發與審查。
+  開發團隊：任務池架構，由 Team Lead（Opus）規劃任務並管理品質閘門，
+  challenger（Sonnet）持續質疑，workers（Sonnet）自取任務並行開發。
+  TL spawn 一次性 QA sub-agents 審查已完成任務。
+  支援任務複雜度評分、file scope 防護、事件驅動審查。
   使用時機：需要多角色團隊協作完成功能開發、全流程開發。
   關鍵字：dev-team, 開發團隊, team, 組隊開發, 多角色,
   團隊協作, 全流程開發, pipeline, 流水線, PM, QA,
@@ -19,37 +18,33 @@ You are the Team Lead (TL). You act as PM with full decision authority, running 
 ## Team Structure
 
 ```
-TL (Opus) — PM, owns all spawn authority
-├── explore-leader (Opus, teammate)
-│   └── sub-agents × N (Sonnet)
-├── pg-leader (Opus, teammate) — manager only, NEVER spawns workers
-│   ├── pg-1 (Sonnet, teammate) ← spawned by TL
-│   ├── pg-2 (Sonnet, teammate) ← spawned by TL
-│   └── ... count decided by TL
-└── qa-leader (Opus, teammate) — triggered by TL, not pg-leader
-    └── sub-agents × N (Sonnet)
+TL (Opus) — Sole planner + quality gate, owns all spawn authority
+├── challenger (Sonnet, teammate) — devil's advocate, persistent
+├── worker-1 (Sonnet, teammate) — self-assigns from task pool
+├── worker-2 (Sonnet, teammate) — self-assigns from task pool
+└── worker-N (Sonnet, teammate) — count decided by TL
 ```
 
 **Key rules:**
-- TL spawns ALL agents (leaders AND workers). No one else spawns.
-- **Lightweight mode** (≤2 workers): skip pg-leader. TL manages workers + qa-leader directly.
-- **Full mode** (≥3 workers): pg-leader manages workers. Does NOT write code.
-- QA triggering always goes through TL. Never pg-leader → qa-leader directly.
-- Leaders: Opus. Workers: Sonnet (default), Haiku if TL decides.
+- TL spawns ALL agents. No one else spawns.
+- No intermediate managers. TL manages everyone directly.
+- Workers self-assign tasks from the task pool (TaskList).
+- Challenger is persistent — reviews at checkpoints and proactively.
+- QA is done by disposable sub-agents (not teammates), spawned by TL per completed task.
 
 ## Communication Rules
 
 ```
 ALLOWED:
-  TL ↔ all leaders
-  TL ↔ all workers (TL spawned them, retains direct access)
-  pg-leader ↔ pg workers (management)
-  qa-leader → TL (review results)
+  TL ↔ all workers
+  TL ↔ challenger
+  worker → TL (completion reports, blocker reports)
+  challenger → TL (challenges, reviews)
 
 FORBIDDEN:
-  pg-leader → qa-leader (must go through TL)
-  worker → qa-leader (must go through pg-leader → TL)
-  worker → worker (must go through pg-leader)
+  worker → worker (must go through TL)
+  worker → challenger (must go through TL)
+  challenger → worker (must go through TL)
 ```
 
 ## Communication Discipline (embed in ALL agent prompts)
@@ -100,6 +95,17 @@ FORBIDDEN:
    Tag frontend/backend. Define blockedBy/blocks dependencies.
    Assign Req-ID (R01, R02...) to each traceable requirement from upstream specs.
 
+   **Task complexity scoring**: assign S(1pt) / M(2pt) / L(3pt) to each task.
+
+   **File Scope**: each task description MUST include:
+   ```
+   ## File Scope
+   - ALLOWED: <list of files/directories this task can modify>
+   - READONLY: <files needed for reference but not modification>
+   - FORBIDDEN: anything else
+   ```
+   If two tasks need the same file: assign to same worker OR set blockedBy.
+
 7. AskUserQuestion: confirm task list, acceptance criteria, priority.
 
 8. Read `references/trace-template.md` → write `{date}-TRACE.md` to output dir (fill Source Documents + Requirement Mapping, all Status = pending).
@@ -109,7 +115,7 @@ FORBIDDEN:
 1. Read `references/api-contract-template.md` → write `{date}-API_CONTRACT.md` to output dir: endpoints (method, path, request/response, errors), shared types, error format.
 2. AskUserQuestion: confirm contract.
 3. Update `{date}-TRACE.md`: fill API Contract Trace table.
-4. Contract change rule: any change requires TL approval. Worker → Leader → TL → decision → notify all leaders.
+4. Contract change rule: any change requires TL approval. Worker → TL → decision → notify all workers.
 
 ### Phase 3: Team Assembly
 
@@ -118,67 +124,78 @@ FORBIDDEN:
 2. Read `references/process-log-template.md` → init `{date}-PROCESS_LOG.md` in output dir.
    Read `references/issues-template.md` → init `{date}-ISSUES.md` in output dir.
 
-3. **TL decides worker count and mode:**
+3. **TL decides worker count:**
    ```
-   ≤3 tasks → 1 worker | 4-8 tasks → 2-3 workers | ≥9 tasks → 3+ workers
+   Calculate total workload: sum of all task points (S=1, M=2, L=3)
+   Target: 3-5 points per worker
    frontend + backend → at least 1 of each
+   Interdependent tasks → assign to same worker
+   Upper limit: 5 workers max
    ```
-   - **Lightweight** (≤2 workers): no pg-leader. TL → workers + qa-leader.
-   - **Full** (≥3 workers): pg-leader coordinates. TL → pg-leader + qa-leader + workers.
 
 4. Spawn agents (Task tool with team_name):
-   - Lightweight: qa-leader (Opus) + workers (Sonnet). Worker `{superior}` = TL.
-   - Full: pg-leader (Opus) + qa-leader (Opus) + workers (Sonnet). Worker `{superior}` = pg-leader.
-   - explore-leader (Opus) if needed.
+   - challenger (Sonnet, teammate)
+   - workers (Sonnet, teammates)
 
 5. **Load prompt templates on demand**: Glob `**/dev-team/**/prompts/` → Read.
    Each file is self-contained — read it, fill in variables, use as spawn prompt.
 
 6. Update `{date}-TRACE.md` Worker column. Append `{date}-PROCESS_LOG.md`: `team-assembled`.
 
-7. Assign tasks:
-   - Lightweight: TL assigns directly to workers (TaskUpdate owner).
-   - Full: TL assigns to pg-leader → pg-leader decomposes and assigns to workers.
-   pg-leader MUST NOT spawn workers. To request more: SendMessage TL.
+7. Assign initial tasks:
+   - TL assigns first task to each worker (TaskUpdate owner).
+   - After initial assignment, workers self-assign subsequent tasks.
+   - Notify challenger: review task decomposition + API Contract.
 
 ### Phase 4: Pipeline Development & Review
 
-**Notification chain:**
-- Lightweight: worker → TL → qa-leader
-- Full: worker → pg-leader → TL → qa-leader
+**Three parallel pipelines:**
 
-1. **Full**: pg-leader manages workers (TaskUpdate, TaskList, blockers, dependencies).
-   **Lightweight**: TL manages workers directly.
+| Pipeline | Actor | Trigger |
+|----------|-------|---------|
+| Development | Workers | Self-assign from TaskList |
+| Review | TL → QA sub-agents | Worker marks task completed |
+| Challenge | Challenger | TL notifies at checkpoints |
 
-2. Worker completes task → TaskUpdate completed → SendMessage `{superior}` (TL or pg-leader).
-   Workers MAY batch-report multiple completed tasks in one message.
+1. Workers execute tasks in parallel, each within their File Scope.
 
-3. **Full only**: pg-leader → TL using `COMPLETED:` prefix. Lightweight: skip (TL already received).
+2. Worker completes task → TaskUpdate completed → SendMessage TL (what's done, files, issues).
+   Worker then self-assigns next available task from TaskList.
 
-4. **TL** → append PROCESS_LOG (`task-completed`), update TRACE → `done`.
-   SendMessage qa-leader + append PROCESS_LOG (`qa-triggered`).
+3. **TL receives completion:**
+   a. Update TRACE → `done`, append PROCESS_LOG (`task-completed`).
+   b. Read `references/qa-review-template.md` → spawn QA sub-agent (Task tool, subagent_type: "general-purpose", model: "sonnet", NOT a teammate).
+   c. QA sub-agent reviews and returns structured result.
 
-5. qa-leader dispatches sub-agent (Sonnet) for review. Can run multiple reviews in parallel.
+4. **QA result handling:**
+   - **PASS** → TL updates TRACE → `qa-pass`, appends PROCESS_LOG (`review-pass`).
+   - **FAIL** → TL updates TRACE → `qa-fail`, appends PROCESS_LOG (`review-fail`), adds ISSUES entry. Creates fix task with file_scope (goes back to task pool).
 
-6. Review results (qa-leader uses structured prefix):
-   - **Pass** → `QA-PASS: Task {ID} | Checked: {summary}` → TL appends PROCESS_LOG (`review-pass`), updates TRACE → `qa-pass`.
-   - **Fail** → `QA-FAIL: Task {ID} | Issues: {list} | Severity: {level}` → TL appends PROCESS_LOG (`review-fail`), updates TRACE → `qa-fail`, adds ISSUES entry. Fix task assigned by TL (or pg-leader in full mode).
+5. **Challenger checkpoints** (TL notifies challenger to review):
+   - After Phase 2: review API Contract design
+   - After each batch of completed tasks: review cross-task consistency
+   - Phase 5: participate in contract verification
 
-7. Adding workers mid-flight: request TL → TL spawns → notifies manager.
+6. **Edge case handling:**
+   - Worker finds task too complex → SendMessage TL → TL splits or reassigns.
+   - Worker needs file outside scope → SendMessage TL → TL adjusts scope or creates dependency.
+   - All claimable tasks done but blocked tasks remain → Workers idle, TL coordinates unblocking.
+   - Adding workers mid-flight: TL spawns new worker, assigns tasks.
 
 ### Phase 5: Contract Consistency Check
 
-qa-leader performs final verification using structured prefix `CONTRACT-CHECK: {endpoint} | Backend: {pass/fail} | Frontend: {pass/fail}`:
+TL spawns dedicated QA sub-agent for contract verification + notifies challenger to participate.
+Sub-agent uses structured prefix `CONTRACT-CHECK: {endpoint} | Backend: {pass/fail} | Frontend: {pass/fail}`:
 - Backend API matches contract? Frontend calls match contract?
 - Request/Response alignment? Error handling? Shared types?
 
 TL updates TRACE API Contract Trace Verified column.
-Inconsistencies → add ISSUES entry. Fail → back to pipeline. Pass → Phase 6.
+Inconsistencies → add ISSUES entry. Fail → back to pipeline (create fix task). Pass → Phase 6.
 
 ### Phase 6: Delivery
 
 1. Finalize `{date}-TRACE.md` Summary counts.
 2. Read `references/delivery-report-template.md` → write `{date}-DELIVERY_REPORT.md` to output dir.
 3. Present to user: list all 5 output files (`{date}-TRACE.md`, `{date}-API_CONTRACT.md`, `{date}-PROCESS_LOG.md`, `{date}-ISSUES.md`, `{date}-DELIVERY_REPORT.md`) with paths.
-4. Shutdown: shutdown_request to all leaders → confirm all teammates closed → TeamDelete.
+4. Shutdown: shutdown_request to challenger + all workers → confirm all teammates closed → TeamDelete.
 5. Do NOT auto-commit/push. User decides.
