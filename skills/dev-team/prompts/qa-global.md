@@ -48,6 +48,11 @@ CHECK 5: Standards Consistency (skip if {standards_file_paths} is "none")
 - Per-task QA logs flagged standards issues → verify they were fixed
 - Any rule applied inconsistently between tasks? (task A follows rule, task B doesn't)
 
+CHECK 6: Integration Test (optional — skip if no existing test framework)
+- If project has existing test scripts/framework → run full test suite
+- Verify no regressions introduced by multi-task changes
+- Report: test command used, pass/fail count, any failures
+
 WRITE LOG:
 Write to {log_path}:
 
@@ -58,7 +63,6 @@ Write to {log_path}:
 [CHECK] integration={PASS|FAIL} | {findings}
 [CHECK] standards-consistency={PASS|FAIL|SKIPPED} | {findings or "no standards files"}
 [RESULT] {PASS|FAIL} | issues={count}
-[METRICS] model=opus | input={tokens} | output={tokens} | duration={seconds}s
 
 RETURN:
   GLOBAL-PASS: {summary of what was verified}

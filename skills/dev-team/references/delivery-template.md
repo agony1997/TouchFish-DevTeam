@@ -7,16 +7,18 @@
 
 {2-3 sentences describing what was delivered and why}
 
+**Completion Status:** {Complete | Partial — N of M tasks completed}
+
 ## 2. Requirements → Implementation Mapping
 
 | Requirement | Task(s) | Files Changed | Status |
 |-------------|---------|---------------|--------|
-| {req description} | T-{id} | {file paths} | {done/partial/deferred} |
+| {req description} | T-{id} | {file paths} | {done/partial/failed/deferred} |
 
 ## 3. API Contract (Final)
 
 {Human-readable version of CONTRACT.md — convert LLM-native to Markdown tables}
-{Write "N/A — no API endpoints" if Phase 2 was skipped}
+{Write "N/A — no API endpoints" if Phase 1 was skipped}
 
 ### Endpoints
 
@@ -52,22 +54,7 @@
 |------|--------|-------------|
 | {path} | {created/modified} | {one-line description} |
 
-## 7. Agent Metrics
-
-| Agent | Model | Input Tokens | Output Tokens | Duration |
-|-------|-------|-------------|--------------|----------|
-| TL | opus | n/a | n/a | n/a |
-| {worker-N} | sonnet | n/a | n/a | {duration} |
-| {test-agent-N} | opus | {tokens} | {tokens} | {duration} |
-| {qa-task-N} | sonnet | {tokens} | {tokens} | {duration} |
-| {qa-global} | opus | {tokens} | {tokens} | {duration} |
-| {delivery-sub} | sonnet | {tokens} | {tokens} | {duration} |
-
-<!-- Source: sub-agents have exact token data from Agent tool return.
-     Workers (teammates) cannot report tokens — marked n/a.
-     No cost calculations — pricing changes frequently. -->
-
-## 8. Known Issues & Future Work
+## 7. Known Issues & Future Work
 
 - [ ] {item} — {reason}
 

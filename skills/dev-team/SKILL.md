@@ -11,7 +11,7 @@ description: >
   並行開發, agent teams, 大團隊。
 ---
 
-<!-- version: 1.0.0 -->
+<!-- version: 1.2.0 -->
 
 # Dev Team
 
@@ -23,9 +23,9 @@ You are the Team Lead (TL). You act as PM with full decision authority, running 
 TL (Opus) — Sole planner + quality gate + spawn authority
 ├── test-agent-N (Opus, sub-agent) — writes tests before Worker codes
 ├── worker-N (Sonnet, teammate) — 1 task, TL-assigned, shutdown after done
-├── qa-task-N (Sonnet, sub-agent) — three-way cross-verification per task
-├── qa-global (Opus, sub-agent) — cross-task consistency (Phase 4)
-└── delivery-sub (Sonnet, sub-agent) — compiles DELIVERY.md (Phase 5)
+├── qa-task-N (Opus, sub-agent) — three-way cross-verification per task
+├── qa-global (Opus, sub-agent) — cross-task consistency (Phase 3)
+└── delivery-sub (Sonnet, sub-agent) — compiles DELIVERY.md (Phase 4)
 ```
 
 **Key rules:**
@@ -45,61 +45,68 @@ Pure acknowledgment → do NOT reply, continue working.
 
 | File | Nature | Format | Writer |
 |------|--------|--------|--------|
-| `{date}-PLAN.md` | Static | LLM-native | TL (P1) |
-| `{date}-CONTRACT.md` | Living | LLM-native | TL (P2+) |
-| `{date}-DELIVERY.md` | Static | Markdown | delivery-sub (P5) |
+| `{date}-PLAN.md` | Static | LLM-native | TL (P0) |
+| `{date}-CONTRACT.md` | Living | LLM-native | TL (P1+) |
+| `{date}-DELIVERY.md` | Static | Markdown | delivery-sub (P4) |
 | `logs/*.log.md` | Append-only | LLM-native | Each agent |
-| `temp/*.md` | Ephemeral | Markdown | TL (P1/P2 confirm) |
+| `temp/*.md` | Ephemeral | Markdown | TL (P0/P1 confirm) |
 
 Working files use LLM-native format: `[TYPE] key=value | key=value`.
 DELIVERY.md is the only Markdown output (sole human-facing document).
 Read `references/log-templates.md` for log format spec.
+TL records sub-agent metrics: after each sub-agent (test-agent, qa-task, qa-global, delivery-sub) returns, log its usage from Agent tool response to tl.log.
 
-## Phase 0: Reconnaissance
+## Phase 0: Project Understanding + Task Planning (TL solo)
 
-1. **Integration detection** (Glob all in parallel):
-   - `**/skills/explorer/SKILL.md` → found: invoke explorer
-   - `**/PROJECT_MAP.md` → found: read directly, skip explorer
-   - `**/skills/test-driven-development/SKILL.md` → found: strict TDD for test-agent
-   - `**/skills/reviewer/SKILL.md` → found: incorporate standards
-   - `.standards/**` → found: read into PLAN
-   - `**/docs/specs/*.md` → found: OpenSpec as requirements source
-2. No explorer and no PROJECT_MAP → manual scan: root structure, tech stack, entry points, configs, shared components.
-   No standards found → AskUserQuestion: where are conventions documented?
-3. AskUserQuestion: existing spec files? PROJECT_MAP path? Convention file locations?
+1. **Project scan** (parallel Glob):
+   - Root structure, tech stack, entry points, configs, shared components.
+   - `**/PROJECT_MAP.md` → found: read directly.
+   - `.standards/**` or similar → found: read into PLAN.
 
-## Phase 1: Requirements Analysis + Task Planning (TL solo)
+2. AskUserQuestion:
+   - "規範/慣例資料夾路徑？（如 .standards/、docs/conventions/ 等，沒有請回'無'）"
+   - 有 → 讀取全部規範檔。無 → PLAN 中 [SOURCE] 寫 "none"。
 
-1. Read user requirements/specs.
+3. Read user requirements/specs.
 
-2. AskUserQuestion: output directory (default: `docs/dev-team/<feature>/`).
+4. **Requirements clarification** — output understanding summary:
+   - Core requirement list (numbered)
+   - Scope boundary (in-scope / out-of-scope)
+   - Technical assumptions
+   → AskUserQuestion: confirm understanding. Adjust until aligned.
+
+5. AskUserQuestion: output directory (default: `docs/dev-team/<feature>/`).
    Create `logs/` subdirectory. All files date-prefixed `YYYY-MM-DD-`.
 
-3. TeamCreate: `"dev-<project>-<feature>"`. Init `logs/tl.log.md`.
+6. TeamCreate: `"dev-<project>-<feature>"`. Init `logs/tl.log.md`.
 
-4. Multi-spec: analyze cross-domain dependencies, shared files.
+7. Multi-spec: analyze cross-domain dependencies, shared files.
    >3 shared files → recommend Sequential.
    AskUserQuestion: Parallel / Sequential / Single-focus. Skip if single spec.
 
-5. Reference PROJECT_MAP. Adjacent code conflicts with standards → note discrepancy in PLAN `[OVERRIDE]`.
+8. Scope check: significant portions already implemented → AskUserQuestion to adjust.
 
-6. Scope check: significant portions already implemented → AskUserQuestion to adjust.
-
-7. TaskCreate: break into tasks.
+9. TaskCreate: break into tasks.
    - **Granularity anchor**: ALLOWED files ≤ 5 per task. >5 → must split. 1 file + trivial → merge into adjacent.
    - Each task description includes `File Scope: ALLOWED + READONLY`.
    - Two tasks need same file → same worker OR blockedBy.
 
-8. Read `references/plan-template.md` → write PLAN.md (LLM-native).
+10. Read `references/plan-template.md` → write PLAN.md (LLM-native).
 
-9. Write `temp/plan-summary.md` (human-readable, for confirmation only).
+11. Write `temp/plan-summary.md` (human-readable, for confirmation only).
 
-10. AskUserQuestion: confirm tasks, acceptance criteria, priority.
-    Present: task count, estimated spawns (≤ 3 concurrent Workers).
+12. AskUserQuestion: confirm tasks, acceptance criteria, priority.
+    Present: task count, estimated spawn count with model breakdown
+    (e.g., "預計 3 Opus + 8 Sonnet, ≤ 3 concurrent Workers").
+    Let user decide whether to proceed based on scale.
 
-## Phase 2: API Contract (TL solo)
+Note: Default execution strategy is `parallel-per-task` (each task runs
+test→work→qa independently). Alternative strategies may be explored in
+future versions.
 
-**SKIP IF** no API endpoints. Log `[LOG] phase=P2 | event=skipped | reason=no-api` in tl.log.
+## Phase 1: API Contract (TL solo)
+
+**SKIP IF** no API endpoints. Log `[LOG] phase=P1 | event=skipped | reason=no-api` in tl.log.
 
 1. Read `references/contract-template.md` → write CONTRACT.md (LLM-native).
 
@@ -110,9 +117,9 @@ Read `references/log-templates.md` for log format spec.
 4. Amendment flow: Worker reports → TL evaluates → modify CONTRACT + increment `[VERSION]` →
    shutdown affected Workers → spawn replacements → QA re-verifies.
 
-## Phase 3: Development Execution
+## Phase 2: Development Execution
 
-1. **Per-task execution loop** (≤ 3 Workers concurrent):
+1. **Per-task execution loop** (≤ 3 Workers concurrent — tentative, subject to empirical tuning):
 
    a. **test-agent** (Opus, sub-agent): Read `prompts/test-agent.md`, fill vars.
       Input: task description + PLAN + CONTRACT → Output: test file paths + `logs/test-agent-N.log.md`.
@@ -120,6 +127,10 @@ Read `references/log-templates.md` for log format spec.
    b. **Worker** (Sonnet, teammate): Read `prompts/worker.md`, fill vars.
       Input: PLAN + CONTRACT + task + test files → writes code + `logs/worker-N.log.md`
       → SendMessage TL completion → shutdown.
+      Worker MUST run `git diff --name-only` before completion report.
+      Compare against ALLOWED files. If out-of-scope files detected:
+      → Worker reverts out-of-scope changes and reports to TL.
+      → This catches scope violations BEFORE QA, saving token cost.
 
    c. **QA** (Sonnet, sub-agent): Read `prompts/qa-task.md`, fill vars.
       Three-way verification (req↔test, test↔code, req↔code) + standards compliance.
@@ -127,7 +138,9 @@ Read `references/log-templates.md` for log format spec.
       → writes `logs/qa-task-N.log.md` → returns PASS/FAIL.
 
 2. QA result: PASS → TaskUpdate completed.
-   FAIL → create fix task (max 2 FAIL cycles per task → AskUserQuestion to escalate).
+   FAIL → create fix task with QA failure summary in description
+   (what failed, why, which checks, severity — so new Worker has full context).
+   Max 2 FAIL cycles per task → AskUserQuestion to escalate.
 
 3. Contract change:
    - In-progress Workers on affected tasks → shutdown_request → spawn replacements with updated CONTRACT.
@@ -140,17 +153,18 @@ Read `references/log-templates.md` for log format spec.
    - Worker unresponsive (2 msgs no reply) → assume crash, reassign, spawn replacement.
    - All tasks blocked → TL coordinates unblocking.
 
-## Phase 4: Global Review
+## Phase 3: Global Review
 
 **SKIP IF** total tasks ≤ 2.
 
 1. Spawn qa-global (Opus, sub-agent): Read `prompts/qa-global.md`, fill vars.
    Input: all changed files + PLAN + CONTRACT + standards files + qa-task logs → cross-task consistency + completeness + standards consistency.
+   Includes optional integration test step (if project has existing test framework).
    Writes `logs/qa-global.log.md`.
 
-2. Issues → create fix tasks → back to Phase 3.
+2. Issues → create fix tasks → back to Phase 2.
 
-## Phase 5: Delivery
+## Phase 4: Delivery
 
 1. Spawn delivery-sub (Sonnet, sub-agent): Read `prompts/delivery-sub.md`, fill vars.
    Read `references/delivery-template.md` for format.
@@ -159,6 +173,7 @@ Read `references/log-templates.md` for log format spec.
 2. Shutdown remaining Workers (if any).
 
 3. Present to user: DELIVERY.md path, all output files, summary.
+   If some tasks failed/incomplete: DELIVERY marks partial completion with per-task status.
 
 4. TeamDelete after all teammates confirmed shut down.
 

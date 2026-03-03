@@ -40,6 +40,17 @@ TEST DESIGN STRATEGY:
    - Response schema matches contract
    - Error format matches contract
 
+TDD DISCIPLINE:
+
+- Write the MINIMUM test that verifies the acceptance criterion
+- Each test MUST be runnable and MUST fail (no implementation exists)
+- Verify: run each test file once → confirm ALL tests fail for expected reasons
+  (missing module, missing function, etc. — NOT syntax errors)
+- If a test passes without implementation → test is wrong, delete and rewrite
+- If test has syntax error → fix before returning
+- Name tests descriptively: "should {expected behavior} when {condition}"
+- RED-GREEN flow: your tests are RED. Worker makes them GREEN. Never write GREEN tests.
+
 OUTPUT:
 - Write test file(s) following project's existing test framework and directory conventions
 - Return: list of test file paths created
@@ -52,10 +63,11 @@ On start:
 
 Before returning:
 [LOG] task={task_id} | event=test-design-complete | test-files={list} | test-count={number}
-[METRICS] model=opus | input={from_usage} | output={from_usage} | duration={seconds}s
 
 RULES:
 - Each test tests ONE behavior (single assertion focus)
+- Multiple assertions per test are OK when they verify a single acceptance criterion
+- Acceptance criterion too vague to write a verifiable assertion → STOP and report to TL for clarification
 - Do NOT create implementation files or stubs
 - Tests MUST fail when run (no implementation exists yet)
 - Use project's existing test framework (check READONLY files for examples)

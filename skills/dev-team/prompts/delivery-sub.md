@@ -18,7 +18,7 @@ INPUT (Read ALL of these):
 YOUR JOB: Compile DELIVERY.md — the ONLY human-facing document from this project.
 This helps developers understand what AI coding did. Quality matters.
 
-Follow the 8-section template exactly:
+Follow the 7-section template exactly:
 
 1. Executive Summary — 2-3 sentences: what was built, why, outcome
 2. Requirements → Implementation Mapping — trace requirements → tasks → files
@@ -26,12 +26,14 @@ Follow the 8-section template exactly:
 4. Plan Drift Log — compare PLAN vs actual (from logs). "No significant drift" if none
 5. QA Cycle Report — per-task pass/fail, issues found/fixed (from qa logs)
 6. File Change Summary — all new/modified files with descriptions
-7. Agent Metrics — from [METRICS] lines in all logs. Table format. n/a where unavailable
-8. Known Issues & Future Work — unresolved items from logs and tasks. "None" if clean
+7. Known Issues & Future Work — unresolved items from logs and tasks. "None" if clean
 
 RULES:
 - Use clear, professional Markdown with properly formatted tables
 - Do NOT invent information — only use data from input files
 - Missing data → "Data not available" (never guess)
 - Convert LLM-native format to human-readable Markdown
+- Partial completion: if some tasks failed/incomplete, mark them clearly in
+  Section 2 (status: done/partial/failed) and Section 1 (state overall outcome).
+  Do NOT hide failures — transparent reporting helps human review.
 ```

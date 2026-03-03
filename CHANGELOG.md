@@ -10,6 +10,57 @@
 > 現已根據 git 歷史重新分配版本號：0.x 為原型快速迭代期，1.0.0 為首個正式發布。
 > 設計文件中出現的「v3.0」即為本版本號重設後的 v1.0.0。
 
+## [1.2.0] - 2026-03-03
+
+### 新增
+
+- **Token 成本透明度**：Phase 0 確認 PLAN 時輸出預估 spawn 數量和模型分佈，讓使用者知道規模後再決定是否執行
+- **Fix Task context 傳遞**：QA FAIL 時 TL 將失敗原因摘要寫入 fix task description，新 Worker 有完整 context
+- **qa-global 可選整合測試**：CHECK 6 — 如果專案有現成測試框架，跑一次全部測試確認無回歸
+- **部分交付支援**：DELIVERY.md 支援「部分完成」標記，列出成功和失敗的任務
+- **test-agent RULES 補完**：需求模糊時停止回報 TL、同一 criterion 允許多斷言
+- **改版驗證 Checklist**：`docs/checklist-release.md`
+- **docs/ 文件索引**：`docs/INDEX.md`，統一檔名格式 `{date}-v{version}-{category}-{descriptor}.md`
+
+### 變更
+
+- **qa-task 改用 Opus**：品質閘門（6 步驟複雜推理）改用最強模型
+- **METRICS 改由 TL 記錄**：Sub-agent 移除 [METRICS] 自報，TL 從 Agent tool 回傳取得 usage 後寫入 tl.log
+- **Worker 併發上限標暫定**：`≤ 3 Workers concurrent` 標註為暫定經驗值，待實測調整
+- 移除未經驗證的具體數字（~40% token savings → 待驗證、10 倍成本差 → 模糊描述）
+
+### 移除
+
+- 過時的 `GUIDE.zh-TW.md`（與 v1.1.0 嚴重矛盾）
+- Sub-agent prompts 中的 [METRICS] 自報行（test-agent、qa-task、qa-global）
+
+## [1.1.0] - 2026-03-03
+
+### 破壞性變更
+
+- **Phase 重新編號**：P0-P5 → P0-P4。舊 P0（Reconnaissance）+ P1（Requirements）合併為新 P0（Project Understanding + Task Planning）
+- **移除所有外部 plugin 偵測邏輯**：不再偵測 explorer、superpowers-tdd、reviewer、OpenSpec。選擇「完全獨立」方案，消除 2^4 = 16 種組合的測試矩陣爆炸問題
+
+### 新增
+
+- **需求澄清步驟**：Phase 0 新增理解摘要輸出 + AskUserQuestion 確認理解，避免基於錯誤理解拆任務
+- **TDD 紀律內建**：test-agent prompt 新增 TDD DISCIPLINE 段落（RED-GREEN 語義、失敗驗證、最小化測試）
+- **Worker scope 自驗**：COMPLETION SEQUENCE 新增步驟 1.5（`git diff --name-only` + ALLOWED list 比對 + 自動 revert）
+- **規範資料夾詢問**：從自動偵測 `.standards/` 改為 AskUserQuestion 主動詢問路徑
+- **Execution strategy 註記**：預設 `parallel-per-task`，設計空間留給未來 `batch-test-first` 等替代方案
+- **設計決策紀錄**：`docs/2026-03-03-v1.1-design-rationale.md`
+
+### 移除
+
+- **DELIVERY Agent Metrics section**：8 section → 7 section。Agent 層級 log 中 `[METRICS]` 行保留作 debug 用途
+- **PLAN Integrations section**：移除 `[DETECT]` 行，不再追蹤外部 plugin 狀態
+- **英文 README**：快速迭代期間僅維護中文版
+
+### 變更
+
+- plan-template.md 的 Phase 引用從 Phase 1 → Phase 0
+- delivery-sub prompt 從 8-section → 7-section
+
 ## [1.0.0] - 2026-03-03
 
 ### 拆分
@@ -30,9 +81,8 @@
 
 - **新 prompts**：`test-agent.md`、`qa-task.md`、`qa-global.md`、`delivery-sub.md`
 - **新 references**：`plan-template.md`、`log-templates.md`
-- **探測增強**：Phase 0 偵測 6 個整合目標（explorer、PROJECT_MAP、TDD、reviewer、.standards、OpenSpec）
-- **DELIVERY 升級**：從簡要報告升級為 8 區塊開發回歸文件
-- **獨立 repo 基礎**：README（中/英）、LICENSE、CHANGELOG、使用指南
+- **DELIVERY 升級**：從簡要報告升級為完整開發回歸文件
+- **獨立 repo 基礎**：README、LICENSE、CHANGELOG、使用指南
 
 ### 移除
 

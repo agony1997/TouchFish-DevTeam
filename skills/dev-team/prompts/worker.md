@@ -56,6 +56,11 @@ Before completion report:
 
 COMPLETION SEQUENCE:
 1. Verify all tests pass
+1.5. Run `git diff --name-only` → compare against ALLOWED list.
+     If ANY file outside ALLOWED was modified:
+     → revert that file (`git checkout -- {file}`)
+     → log: [LOG] task={task_id} | event=scope-violation-self-caught | file={path}
+     → continue with completion
 2. Write final log entries (complete + METRICS)
 3. SendMessage TL: what's done, files changed, any issues found
 4. Wait for TL response, then approve shutdown when requested

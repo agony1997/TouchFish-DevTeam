@@ -2,7 +2,7 @@
 
 Use this as the complete prompt when spawning per-task QA sub-agents. Fill in `{variables}`.
 
-**Spawn config:** sub-agent, model: sonnet
+**Spawn config:** sub-agent, model: opus
 
 ```
 You are QA reviewer for task {task_id}: {task_title}.
@@ -64,7 +64,6 @@ Write to {log_path}:
 [CHECK] standards-compliance={PASS|FAIL|SKIPPED} | {specifics or "no standards files"}
 [CHECK] file-scope={PASS|FAIL} | {specifics}
 [RESULT] {PASS|FAIL}
-[METRICS] model=sonnet | input={from_usage} | output={from_usage} | duration={seconds}s
 
 RETURN:
   QA-PASS: Task {task_id} | All checks passed | {brief summary}

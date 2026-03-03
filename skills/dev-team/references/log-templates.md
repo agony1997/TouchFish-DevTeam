@@ -7,11 +7,14 @@
 
 ## TL Log — `logs/tl.log.md`
 
-[LOG] phase={P0-P5} | event={type} | {key=value details}
+[LOG] phase={P0-P4} | event={type} | {key=value details}
 
 Event types: plan-created, contract-created, contract-amendment,
 worker-spawned, worker-replaced, worker-crashed, phase-transition,
-blocker-resolved, escalation
+blocker-resolved, escalation, sub-agent-metrics
+
+Sub-agent metrics (TL records after each sub-agent returns):
+[LOG] phase={phase} | event=sub-agent-metrics | agent={name} | task={task-id} | model={model} | input={tokens} | output={tokens}
 
 ---
 
@@ -19,9 +22,6 @@ blocker-resolved, escalation
 
 [LOG] task={task-id} | event=test-design-start | strategy={red-green,boundary,error,contract}
 [LOG] task={task-id} | event=test-design-complete | test-files={list} | test-count={number}
-[METRICS] model=opus | input={tokens} | output={tokens} | duration={seconds}s
-
-METRICS line: write once before returning results to TL.
 
 ---
 
@@ -45,7 +45,6 @@ METRICS line: write once before sending completion report to TL.
 [CHECK] standards-compliance={PASS|FAIL|SKIPPED} | {specifics or "no standards files"}
 [CHECK] file-scope={PASS|FAIL} | {specifics}
 [RESULT] {PASS|FAIL}
-[METRICS] model=sonnet | input={tokens} | output={tokens} | duration={seconds}s
 
 ---
 
@@ -58,4 +57,3 @@ METRICS line: write once before sending completion report to TL.
 [CHECK] integration={PASS|FAIL} | {findings}
 [CHECK] standards-consistency={PASS|FAIL|SKIPPED} | {findings or "no standards files"}
 [RESULT] {PASS|FAIL} | issues={count}
-[METRICS] model=opus | input={tokens} | output={tokens} | duration={seconds}s
