@@ -1,0 +1,696 @@
+# dev-team v3.0 Design Document
+
+> Date: 2026-03-02
+> Status: Draft
+> Based on: `2026-03-02-v3-exploration.md` (35 design decisions)
+> Breaking change from: v2.2.0
+
+---
+
+## 1. Motivation
+
+v2.2.0 has structural problems that cannot be fixed incrementally:
+
+- **TL bottleneck**: 33 responsibilities across planning, tracking, QA, communication
+- **Context degradation**: persistent Workers lose instruction compliance after 3-4 tasks
+- **Tracking overhead**: 5 output files (TRACE, CONTRACT, PROCESS_LOG, ISSUES, DELIVERY) with heavy TL maintenance
+- **Challenger ROI**: persistent challenger idles most of the time, consumes context
+- **Same-source test bias**: Worker writes both code and tests — shared blind spots
+
+v3.0 is a ground-up redesign, not a patch.
+
+---
+
+## 2. Core Principles
+
+| # | Principle | Description |
+|---|-----------|-------------|
+| P1 | **Focus on team orchestration** | Task planning, contract management, conflict protection, tracking, delivery. Do NOT replicate superpowers (methodology) or OpenSpec (spec lifecycle) |
+| P2 | **Plugin-independent + detection-enhanced** | Core flow has zero hard dependencies. Auto-detect other plugins → upgrade experience. Separate Recommended Integrations doc |
+| P3 | **Single-skill full flow** | One SKILL.md covers P0-P5. Team orchestration is stateful — skill chains don't fit |
+| P4 | **Files are memory** | All critical decisions write to files. LLM context is unreliable short-term memory. Filesystem = source of truth |
+
+---
+
+## 3. Architecture Overview
+
+### 3.1 Team Structure
+
+```
+TL (Opus) — Sole planner + quality gate + spawn authority
+├── test-agent-N (Opus, sub-agent) — writes tests BEFORE Worker codes
+├── worker-N (Sonnet, teammate) — 1 task per worker, TL-assigned
+├── qa-task-N (Sonnet, sub-agent) — three-way cross-verification per task
+├── qa-global (Opus, sub-agent) — cross-task consistency (Phase 4)
+└── delivery-sub (Sonnet, sub-agent) — assembles DELIVERY.md (Phase 5)
+```
+
+**Key changes from v2.2.0:**
+- Challenger removed — responsibilities absorbed by per-task QA + global review
+- Workers are 1-task-per-worker (no self-assignment, no persistence)
+- test-agent is a new role (separated testing)
+- QA split into per-task (Sonnet) and global (Opus)
+
+### 3.2 Phase Structure (6 → 5 Phases)
+
+| Phase | Name | Description |
+|-------|------|-------------|
+| P0 | Reconnaissance | Detect explorer/PROJECT_MAP, scan project |
+| P1 | Requirements Analysis + Task Planning | Produce PLAN.md (LLM-native) + temp human summary |
+| P2 | API Contract | Produce CONTRACT.md (LLM-native) + temp human summary. SKIP IF no API |
+| P3 | Development Execution | Per-task loop: test-agent → Worker → QA. Merged old P3+P4 |
+| P4 | Global Review | Cross-task consistency + contract compliance. Merged old P5+P6 |
+| P5 | Delivery | DELIVERY.md (Markdown) + cleanup |
+
+### 3.3 File Architecture
+
+| File | Nature | Writer | Reader | Format |
+|------|--------|--------|--------|--------|
+| PLAN.md | Static (write once) | TL (P1) | Workers, QA | LLM-native |
+| CONTRACT.md | Living (amendment flow) | TL (P2 + amendments) | Workers, QA | LLM-native |
+| DELIVERY.md | Static | P5 sub-agent or TL | Humans | Markdown |
+| logs/tl.log.md | Append-only | TL | P5 sub-agent | LLM-native |
+| logs/worker-N.log.md | Append-only | Each Worker | P5 sub-agent | LLM-native |
+| logs/qa-task-N.log.md | Append-only | Each QA sub-agent | P5 sub-agent | LLM-native |
+| temp/*.md | Ephemeral | TL | Humans (confirmation) | Markdown |
+
+**Removed from v2.2.0:** TRACE.md, PROCESS_LOG.md, ISSUES.md (replaced by TaskList + logs/)
+
+### 3.4 LLM-Native File Format
+
+All working files (PLAN, CONTRACT, logs) use LLM-optimized format:
+
+```
+[SECTION] Section Name
+
+[KEY] value
+[KEY] value | sub-value | sub-value
+
+[ENTRY] type=xxx | status=xxx | detail=xxx
+```
+
+Rules:
+- Structured prefix: `[TYPE]` at line start
+- Flat key-value, avoid nesting
+- Pipe-delimited (`|`) for multi-value fields
+- Block markers: `[SECTION]` instead of `## Section`
+- No formatting decorations (no tables, no alignment)
+- ~40% more token-efficient than Markdown tables
+
+Human-readable output is ONLY for:
+- temp/ summaries (P1/P2 confirmation, one-time, not maintained)
+- DELIVERY.md (the sole formal human document)
+
+---
+
+## 4. Phase Details
+
+### Phase 0: Reconnaissance
+
+1. Detection-enhanced integration scan (see §7.5)
+2. If `explorer` skill detected → invoke explorer → wait for PROJECT_MAP.md
+3. If PROJECT_MAP.md already exists → read directly, skip explorer
+4. If neither → manual scan: root structure, tech stack, entry points, configs, shared components, standards
+5. AskUserQuestion: existing spec file locations, PROJECT_MAP path (if any), conventions
+6. If `.standards/` or standards file found → read and incorporate
+
+### Phase 1: Requirements Analysis + Task Planning (TL solo)
+
+1. Read user requirements/specs
+
+2. AskUserQuestion: output directory (default: `docs/dev-team/<feature>/`)
+   - All output files use date prefix: `YYYY-MM-DD-`
+   - Create `logs/` subdirectory
+
+3. Multi-spec assessment (if multiple specs):
+   - Analyze cross-domain relationships
+   - Shared file identification
+   - AskUserQuestion: Parallel / Sequential / Single-focus
+
+4. Reference PROJECT_MAP.md for architecture, reusable components, project standards
+   - If adjacent code doesn't follow documented standards → note discrepancy in PLAN
+
+5. Scope check: verify requirements vs current codebase
+   - If significant portions already implemented → AskUserQuestion to adjust scope
+
+6. TaskCreate: break into tasks
+   - **Task granularity anchor**: each task ALLOWED files ≤ 5
+   - One clear function per task (describable in one sentence)
+   - \> 5 ALLOWED files → must split
+   - 1 ALLOWED file + trivial logic → merge into adjacent task
+   - Define blockedBy/blocks dependencies
+   - If two tasks need the same file → same worker OR blockedBy
+
+   Each task description MUST include:
+   ```
+   ## File Scope
+   - ALLOWED: <files this task can modify, max 5>
+   - READONLY: <files for reference only>
+   ```
+
+7. Write PLAN.md (LLM-native format):
+   ```
+   [SECTION] Project Overview
+   [GOAL] {one-line project goal}
+   [ARCH] {key architectural decisions}
+   [NAMING] {naming conventions to follow}
+   [CONSTRAINTS] {critical constraints}
+   [SHARED] {cross-task shared resources}
+
+   [SECTION] Integrations
+   [DETECT] {integration detection results from P0}
+
+   [SECTION] Standards
+   [SOURCE] {where standards come from}
+   [OVERRIDE] follow-actual-code | {noted discrepancies}
+   ```
+   Target size: ~500-1500 tokens
+
+8. Write temp/plan-summary.md (human-readable, for user confirmation)
+
+9. AskUserQuestion: confirm task list, acceptance criteria, priority
+   - Present: task count, estimated Worker spawns (≤ 3 concurrent)
+
+### Phase 2: API Contract (TL solo)
+
+**SKIP IF**: requirements contain no API endpoints. Note "P2: SKIP (no API)" in PLAN.
+
+1. Write CONTRACT.md (LLM-native format):
+   ```
+   [SECTION] API Contract
+   [VERSION] 1
+
+   [ENDPOINT] method=POST | path=/api/users | req={schema} | res={schema} | errors=400,404,500
+   [ENDPOINT] method=GET | path=/api/users/:id | req=none | res={schema} | errors=404,500
+
+   [SECTION] Shared Types
+   [TYPE] name=User | fields=id:string,name:string,email:string
+
+   [SECTION] Error Format
+   [FORMAT] {code: number, message: string, details?: object}
+   ```
+
+2. Write temp/contract-summary.md (human-readable, for user confirmation)
+
+3. AskUserQuestion: confirm contract
+
+4. Contract amendment rule: any change requires TL approval
+   - TL modifies CONTRACT.md → increments [VERSION]
+   - Affected Workers: shutdown → spawn new Worker with updated contract
+   - QA verifies contract compliance for all related tasks
+
+### Phase 3: Development Execution
+
+TeamCreate: `"dev-<project>-<feature>"`
+
+**Per-task execution loop** (≤ 3 Workers concurrent):
+
+```
+For each executable task (no blockedBy, status=pending):
+
+  1. TL spawns test-agent (Opus, sub-agent)
+     → Reads: task description + PLAN.md + CONTRACT.md
+     → Produces: test file(s) — red/green tests, boundary tests, error cases
+     → Returns: test file paths
+
+  2. TL spawns Worker (Sonnet, teammate)
+     → Reads: PLAN.md + CONTRACT.md + task description + test files
+     → Writes code to pass all tests
+     → SendMessage TL: completion report (files changed, issues found)
+     → Writes logs/worker-N.log.md
+     → shutdown
+
+  3. TL spawns QA (Sonnet, sub-agent)
+     → Three-way cross-verification (see §7.3)
+     → Writes logs/qa-task-N.log.md
+     → Returns: PASS or FAIL with details
+```
+
+**TL Phase 3 flow:**
+1. Pick executable tasks from TaskList → spawn ≤ 3 test-agent+Worker pairs
+2. Wait for Worker completion/help requests
+3. Complete → spawn QA → handle result:
+   - PASS → TaskUpdate completed
+   - FAIL → create fix task (re-enters loop)
+4. Contract change needed → terminate affected Workers → amend → spawn new Workers
+5. Repeat until all tasks completed
+
+**Edge cases:**
+- Worker needs file outside scope → SendMessage TL → TL adjusts or creates dependency
+- Worker finds task too complex → SendMessage TL → TL splits
+- Worker unresponsive (2 messages no reply) → TL assumes crash, reassign task, spawn replacement
+- All available tasks blocked → TL coordinates unblocking
+
+### Phase 4: Global Review
+
+1. TL spawns qa-global (Opus, sub-agent):
+   - Reads: ALL changed files, PLAN.md, CONTRACT.md, all qa-task logs
+   - Checks:
+     - Cross-task consistency (naming, patterns, error handling)
+     - Contract compliance across all endpoints
+     - Completeness: original requirements vs TaskList (gap analysis)
+   - Returns: structured findings
+   - Writes logs/qa-global.log.md
+
+2. SKIP condition: if total tasks ≤ 2, skip Phase 4 (per-task QA is sufficient)
+
+3. Issues found → create fix tasks → back to Phase 3
+
+### Phase 5: Delivery
+
+1. TL spawns delivery-sub (Sonnet, sub-agent):
+   - Reads: PLAN.md, CONTRACT.md, all logs/*, TaskList dump
+   - Produces: DELIVERY.md (see §6.3 for 8-section template)
+
+2. TL sends shutdown_request to all remaining Workers (if any)
+
+3. TL presents to user:
+   - DELIVERY.md path
+   - List of all output files
+   - Summary of what was delivered
+
+4. TeamDelete after all teammates confirmed shut down
+
+5. Do NOT auto-commit/push. User decides.
+
+---
+
+## 5. Agent Specifications
+
+### 5.1 Model Selection
+
+| Agent | Model | Rationale |
+|-------|-------|-----------|
+| TL | Opus | Planning + judgment + management — needs strongest reasoning |
+| Worker | Sonnet | Coding proficient, best cost-efficiency |
+| test-agent | Opus | Boundary test design requires imagination — quality first |
+| QA per-task | Sonnet | Checklist-driven review, Sonnet sufficient |
+| QA global | Opus | Cross-project consistency judgment, runs once |
+| delivery-sub | Sonnet | Structured compilation, no deep reasoning needed |
+
+Haiku NOT used — DELIVERY.md is the only human-facing artifact, quality should not be compromised.
+
+### 5.2 TL (Team Lead)
+
+- Model: Opus
+- Type: Main session (not spawned)
+- Responsibilities (~15 items, down from 33):
+  - P0: reconnaissance + integration detection
+  - P1: requirements analysis, task creation, PLAN.md
+  - P2: CONTRACT.md, amendment management
+  - P3: spawn loop (test-agent → Worker → QA), handle results
+  - P4: spawn qa-global
+  - P5: spawn delivery-sub, cleanup
+  - Cross-cutting: blocker resolution, contract amendments, Worker replacement
+
+### 5.3 Worker
+
+- Model: Sonnet
+- Type: Teammate (1 task per worker)
+- Lifecycle: spawn with task → execute → completion report → shutdown
+- Reads on start: PLAN.md, CONTRACT.md, task description, test files
+- Writes: code changes + logs/worker-N.log.md
+- Communication: can SendMessage TL (help, completion, issues)
+- Scope enforcement: strict File Scope (ALLOWED/READONLY)
+- No self-assignment (TL assigns at spawn time)
+- No peer communication (only TL ↔ Worker)
+
+### 5.4 test-agent
+
+- Model: Opus
+- Type: Sub-agent (disposable)
+- Input: task description + PLAN.md + CONTRACT.md
+- Output: test file(s) with:
+  - Red/green tests (basic functionality)
+  - Boundary tests (edge cases, limits)
+  - Error case tests (invalid input, failure paths)
+- Does NOT write implementation code
+- Fresh context per task (no degradation)
+
+### 5.5 QA per-task
+
+- Model: Sonnet
+- Type: Sub-agent (disposable)
+- Input: task description, code changes, test files, CONTRACT.md, project standards
+- Method: Three-way cross-verification (see §7.3)
+- Output: PASS/FAIL + structured findings
+- Writes: logs/qa-task-N.log.md (before destruction)
+
+### 5.6 QA Global
+
+- Model: Opus
+- Type: Sub-agent (disposable)
+- Input: ALL changed files, PLAN.md, CONTRACT.md, all qa-task logs
+- Checks: cross-task consistency, contract compliance, completeness
+- Output: structured findings
+- Writes: logs/qa-global.log.md
+
+### 5.7 Delivery Sub-agent
+
+- Model: Sonnet
+- Type: Sub-agent (disposable)
+- Input: PLAN.md, CONTRACT.md, all logs/*, TaskList dump
+- Output: DELIVERY.md (8-section Markdown)
+
+---
+
+## 6. File Specifications
+
+### 6.1 PLAN.md (LLM-native)
+
+```
+[SECTION] Project Overview
+[GOAL] Build user authentication system with JWT
+[ARCH] Clean architecture | handler → service → repository
+[NAMING] camelCase for JS | snake_case for DB | PascalCase for types
+[CONSTRAINTS] Must use existing User table | No breaking API changes
+[SHARED] src/utils/auth.ts | src/types/user.ts
+
+[SECTION] Integrations
+[DETECT] superpowers-tdd=found | reviewer=not-found | standards=found(.standards/)
+[DETECT] explorer=not-found | project-map=found(docs/PROJECT_MAP.md) | openspec=not-found
+
+[SECTION] Standards
+[SOURCE] .standards/backend.md | .standards/api.md
+[OVERRIDE] follow-actual-code | noted: .standards/backend.md says tab indent but codebase uses 2-space
+```
+
+- Written by TL in Phase 1
+- Static — written once, never updated
+- Target: 500-1500 tokens
+- Workers MUST read this at task start
+
+### 6.2 CONTRACT.md (LLM-native)
+
+```
+[SECTION] API Contract
+[VERSION] 1
+
+[ENDPOINT] method=POST | path=/api/auth/login | req={email:string,password:string} | res={token:string,user:User} | errors=400,401
+[ENDPOINT] method=POST | path=/api/auth/register | req={name:string,email:string,password:string} | res={user:User} | errors=400,409
+[ENDPOINT] method=GET | path=/api/auth/me | req=none | res={user:User} | errors=401
+
+[SECTION] Shared Types
+[TYPE] name=User | fields=id:string,name:string,email:string,createdAt:string
+
+[SECTION] Error Format
+[FORMAT] {code:number, message:string, details?:object}
+
+[SECTION] Amendment Log
+[AMEND] v=2 | date=2026-03-02 | change=Added PATCH /api/auth/me | reason=Worker-2 discovered need for profile update
+```
+
+- Written by TL in Phase 2
+- Living document — amendments via TL only, version incremented
+- Amendment triggers: Worker request → TL approval → update → affected Workers terminated → new Workers spawned
+
+### 6.3 DELIVERY.md (Markdown, 8 Sections)
+
+```markdown
+# Delivery Report
+
+> Project: {name} | Date: {date}
+> Based on: {spec paths}
+
+## 1. Executive Summary
+{2-3 sentences}
+
+## 2. Requirements → Implementation Mapping
+| Requirement | Task(s) | Files Changed | Status |
+|-------------|---------|---------------|--------|
+
+## 3. API Contract (Final)
+{Human-readable version of CONTRACT.md}
+
+## 4. Plan Drift Log
+| Original Plan | Actual Implementation | Reason |
+|---------------|----------------------|--------|
+
+## 5. QA Cycle Report
+| Task | Pass/Fail Rounds | Issues Found → Fixed |
+|------|------------------|---------------------|
+
+## 6. File Change Summary
+| File | Action | Description |
+|------|--------|-------------|
+
+## 7. Agent Metrics
+| Agent | Model | Input Tokens | Output Tokens | Duration |
+|-------|-------|-------------|--------------|----------|
+
+## 8. Known Issues & Future Work
+- [ ] {item} — {reason}
+```
+
+- Written by delivery-sub in Phase 5
+- The ONLY formal human-facing document
+- Designed for developers returning to the project after AI coding
+
+### 6.4 Log Files (LLM-native, Append-only)
+
+**logs/tl.log.md:**
+```
+[LOG] phase=P1 | event=plan-created | tasks=8 | workers=3
+[LOG] phase=P3 | event=contract-amendment | v=2 | reason=xxx | affected=worker-2
+[LOG] phase=P3 | event=worker-replaced | worker=worker-1 | reason=unresponsive
+```
+
+**logs/worker-N.log.md:**
+```
+[LOG] task=T-3 | event=start | files=src/auth/login.ts,src/auth/login.test.ts
+[LOG] task=T-3 | event=issue | detail=existing UserService uses callback pattern, adapted to async
+[LOG] task=T-3 | event=complete | files-changed=2 | tests-passed=all
+[METRICS] model=sonnet | input=n/a | output=n/a | duration=180s
+```
+
+**logs/qa-task-N.log.md:**
+```
+[LOG] task=T-3 | event=review-start
+[CHECK] spec-compliance=PASS
+[CHECK] code-quality=PASS | note=minor: unused import in line 12
+[CHECK] three-way=PASS | req-vs-test=aligned | test-vs-code=aligned | req-vs-code=aligned
+[CHECK] file-scope=PASS
+[RESULT] PASS
+[METRICS] model=sonnet | input=12500 | output=850 | duration=45s
+```
+
+Rules:
+- Each agent writes ONLY its own log
+- Append-only (never edit previous entries)
+- QA sub-agents write their log before returning result
+- P5 delivery-sub reads all logs for compilation
+
+---
+
+## 7. Key Mechanisms
+
+### 7.1 File Scope Enforcement (3 Layers)
+
+| Layer | When | Who | Action |
+|-------|------|-----|--------|
+| Pre-execution | Task creation | TL | Ensure ALLOWED files don't overlap across concurrent tasks. Overlap → blockedBy |
+| During execution | Coding | Worker | Must verify file is ALLOWED before editing. Need out-of-scope file → SendMessage TL |
+| Post-execution | Review | QA | Check only ALLOWED files were modified. Scope violation → FAIL |
+
+### 7.2 Contract Amendment Flow
+
+```
+Worker discovers contract issue
+  → SendMessage TL: "CONTRACT needs change: {reason}"
+  → TL evaluates
+  → TL modifies CONTRACT.md, increments [VERSION]
+  → TL identifies affected Workers
+  → TL sends shutdown_request to affected Workers
+  → Affected Workers shutdown (1-task = low loss)
+  → TL spawns new Workers with updated CONTRACT.md
+  → QA verifies contract compliance for all related tasks
+```
+
+Cost of termination is low because 1-task-per-worker means no cross-task knowledge lost.
+
+### 7.3 Three-Way Cross-Verification (QA)
+
+QA sub-agent performs three independent checks:
+
+```
+1. Requirements ↔ Tests
+   - Do tests cover all acceptance criteria?
+   - Are there requirements without corresponding tests?
+
+2. Tests ↔ Code
+   - Does code make all tests pass correctly (not just bypass)?
+   - Are there code paths not covered by tests?
+
+3. Requirements ↔ Code
+   - Does code implement what was actually required?
+   - Is there code that doesn't map to any requirement?
+```
+
+This is stricter than TDD — TDD trusts tests, three-way verification trusts NO single artifact.
+
+### 7.4 Natural Degradation (No LITE/STANDARD Modes)
+
+Instead of explicit modes, the flow naturally simplifies:
+
+| Condition | Simplification |
+|-----------|---------------|
+| Few tasks (≤ 3) | Fewer Worker spawns |
+| No API endpoints | Skip Phase 2 entirely |
+| Tasks ≤ 2 | Skip Phase 4 global review |
+| PLAN always produced | Files-are-memory principle — never skip |
+
+User can also specify:
+- Existing spec file locations
+- PROJECT_MAP.md path
+- Convention/standards file locations
+
+### 7.5 Detection-Enhanced Integration
+
+| Detection Target | Glob Pattern | Phase | Upgrade Behavior |
+|-----------------|-------------|-------|-----------------|
+| explorer skill | `**/skills/explorer/SKILL.md` | P0 | Found → invoke explorer for reconnaissance |
+| PROJECT_MAP.md | `**/PROJECT_MAP.md` | P0 | Found → skip explorer, read directly |
+| superpowers TDD | `**/skills/test-driven-development/SKILL.md` | P1 | Found → test-agent uses strict TDD mode |
+| reviewer skill | `**/skills/reviewer/SKILL.md` | P1 | Found → incorporate standard files |
+| .standards/ | `.standards/**` | P1 | Found → read and include in PLAN |
+| OpenSpec SDD | `**/docs/specs/*.md` | P1 | Found → can serve as requirements source |
+
+Detection results written to PLAN.md `[SECTION] Integrations`.
+
+### 7.6 Separated Testing
+
+```
+Traditional (v2.2.0):        v3.0 Separated:
+  Worker writes code           test-agent (Opus) writes tests
+  Worker writes tests          Worker (Sonnet) writes code to pass tests
+  Same-source bias             Different-source, different model
+```
+
+- test-agent uses Opus for boundary test creativity
+- Worker sees tests as a specification to satisfy
+- QA verifies alignment between all three (requirements, tests, code)
+- Extra cost: ~$0.25/task — justified by significant quality improvement
+
+### 7.7 Standards Conflict Resolution
+
+When existing code doesn't follow documented standards:
+
+- Worker READONLY list includes both standards files AND adjacent actual code
+- **Follow actual surrounding code style** (not blind standard compliance)
+- TL notes discrepancies in PLAN.md `[OVERRIDE]` section
+- Worker logs discrepancies in their log file
+- DELIVERY.md Audit Trail presents inconsistencies found
+
+---
+
+## 8. Communication Rules
+
+```
+ALLOWED:
+  TL ↔ Worker (instructions, help requests, completion reports)
+
+FORBIDDEN:
+  Worker ↔ Worker (no peer communication)
+```
+
+Communication discipline (embedded in Worker prompt):
+- Receive message from TL → address it FIRST
+- Complete task → SendMessage TL: what's done, files changed, issues
+- STOP RULE (positive form): complete task → report. Hit problem → report. Receive pure acknowledgment → do NOT reply, continue working
+- Worker prompt explicitly prohibits peer communication
+
+### 8.1 TL Communication
+
+TL operates in passive mode during Phase 3:
+- Spawn Workers → wait for their messages
+- React to: completion reports, help requests, contract change requests
+- Proactive actions: replace unresponsive Workers, manage blockers
+
+---
+
+## 9. Metrics Design
+
+Each agent records: model + input tokens + output tokens + wall-clock time.
+
+```
+[METRICS] model=xxx | input=xxx | output=xxx | duration=xxxs
+```
+
+| Agent Type | Token Data | Duration | Source |
+|-----------|-----------|----------|--------|
+| Sub-agents (test/QA/delivery) | Exact (from Agent tool `<usage>`) | Exact | Returned by tool |
+| Workers (teammate) | n/a (API doesn't expose to AI) | Wall-clock | Self-reported |
+| TL | Not recorded (is the session itself) | — | — |
+
+- **No cost calculation** — pricing changes frequently, outside SKILL scope
+- No Haiku mention in metrics (Haiku not used)
+- Worker writes METRICS to their log file before completion report
+
+---
+
+## 10. Breaking Changes from v2.2.0
+
+| Area | v2.2.0 | v3.0 |
+|------|--------|------|
+| Challenger | Persistent teammate, devil's advocate | **Removed** — absorbed by per-task QA + global review |
+| Worker lifecycle | Persistent, self-assigns multiple tasks | **1 task per worker**, TL-assigned, shutdown after completion |
+| Testing | Worker writes own tests | **Separated**: test-agent (Opus) writes tests → Worker codes |
+| QA method | Checklist review | **Three-way cross-verification** (req ↔ test ↔ code) |
+| Output files | 5 files (TRACE, CONTRACT, PROCESS_LOG, ISSUES, DELIVERY) | **4 files** (PLAN, CONTRACT, DELIVERY, logs/) + temp/ |
+| File format | All Markdown | **LLM-native** for working files, Markdown only for DELIVERY |
+| Tracking | TRACE.md (TL-maintained) | **TaskList** (native) + distributed logs |
+| Phase count | 6 phases (P0-P6) | **5 phases** (P0-P5) |
+| Task complexity | S/M/L scoring | **File count anchor** (ALLOWED ≤ 5) |
+| Metrics | Cost estimates with hardcoded pricing | **Raw data only** (model, tokens, time), no cost |
+| Mode selection | N/A (implicit) | **Natural degradation** (no explicit LITE/STANDARD) |
+| Communication | TL ↔ all, challenger ↔ TL | **TL ↔ Worker only** (simplified) |
+| DELIVERY | Simple report | **8-section development return document** |
+
+---
+
+## 11. Implementation Scope
+
+### Files to Create/Rewrite
+
+| File | Action | Description |
+|------|--------|-------------|
+| SKILL.md | Rewrite | Complete rewrite reflecting v3.0 design |
+| prompts/worker.md | Rewrite | 1-task lifecycle, no self-assignment, log writing |
+| prompts/test-agent.md | New | Opus test-agent prompt for separated testing |
+| prompts/qa-task.md | New | Sonnet per-task QA with three-way verification |
+| prompts/qa-global.md | New | Opus global review prompt |
+| prompts/delivery-sub.md | New | Sonnet delivery compilation prompt |
+| references/plan-template.md | New | LLM-native PLAN template |
+| references/contract-template.md | Rewrite | LLM-native CONTRACT template |
+| references/delivery-template.md | Rewrite | 8-section Markdown DELIVERY template |
+| references/log-templates.md | New | LLM-native log format reference |
+| prompts/challenger.md | Delete | Challenger role removed |
+| references/trace-template.md | Delete | TRACE replaced by TaskList |
+| references/process-log-template.md | Delete | Replaced by distributed logs |
+| references/issues-template.md | Delete | Issues become TaskList tasks |
+| references/qa-review-template.md | Delete | Replaced by qa-task.md prompt |
+| docs/GUIDE.zh-TW.md | Rewrite | Updated for v3.0 |
+| SKILL.md frontmatter | Update | Version 3.0.0, updated description |
+
+### Files NOT Changed
+
+- `.references/` (external reference repos — untouched)
+- `docs/2026-03-02-*.md` (historical exploration docs — preserved)
+
+---
+
+## 12. Open Items (to resolve during implementation planning)
+
+| Item | Description |
+|------|-------------|
+| Recommended Integrations doc | Document listing compatible plugins and integration patterns |
+| SKILL.md line budget | Target ~150-220 lines (v2.2.0 was ~218) |
+| Worker prompt variables | Finalize {variable} list for spawn template |
+| Error recovery depth | How many QA-FAIL → fix cycles before escalating to user? |
+| Concurrent Worker cap | Fixed at 3 or configurable? (Current decision: ≤ 3) |
+
+---
+
+## Appendix: Decision Traceability
+
+All 35 decisions are documented in `2026-03-02-v3-exploration.md` §9 (consolidated decision table). This design document is the architectural implementation of those decisions.

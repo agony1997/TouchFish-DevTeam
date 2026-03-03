@@ -1,1 +1,8 @@
+# External references (local only)
+.references/
+
+# Git worktrees
+.worktrees/
+
+# IDE
 .idea/

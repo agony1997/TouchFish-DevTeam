@@ -1,9 +1,9 @@
 {
-  "version": "0.5.0",
+  "version": "1.0.0",
   "name": "dev-team",
-  "description": "開發團隊：任務池架構（TL + challenger + workers），自取任務、事件驅動 QA、file scope 防護",
+  "description": "開發團隊：1-task-per-worker teammates、分離測試、三方交叉驗證 QA、LLM-native 文件架構",
   "author": {
-    "name": "Custom Skills"
+    "name": "agony1997"
   },
   "skills": [
     "./skills/dev-team"

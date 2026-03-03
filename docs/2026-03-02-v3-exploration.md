@@ -1,0 +1,566 @@
+# dev-team v3.0 探討紀錄
+
+> 日期：2026-03-02
+> 參與者：使用者（設計者 / 決策者）、Claude（分析 / 記錄）
+> 依據：`2026-03-02-comparison-analysis.md`（15 個問題比對分析）
+> 目的：記錄 v3.0 改版方向的探索過程、核心價值定位、取捨決策與發想
+> **完整對話紀錄**：[2026-03-02-v3-dialogue-log.md](2026-03-02-v3-dialogue-log.md)（94 組 Q&A，含 Claude 提問、選項與使用者回答）
+
+---
+
+## 1. 核心價值定位
+
+### 三套工具生態系定位
+
+| 工具 | 核心價值 | 不可替代的東西 |
+|------|---------|--------------|
+| **superpowers** | **方法論紀律** | TDD、systematic debugging、verification-before-completion、code review 雙階段。確保「做法正確」 |
+| **OpenSpec** | **規格生命週期管理** | Delta spec、archive、verify 三維檢查、spec-to-code 溯源。確保「做的東西是對的」 |
+| **dev-team** | **多角色團隊編排** | 多 Agent 同時工作 + 團隊協作流程（任務拆分 → 契約 → 分工 → 審查 → 交付）。確保「一群人能一起做事」 |
+
+**結論**：dev-team 的不可替代性在於它是唯一管理「多個 Agent 如何協作」的工具。
+
+### dev-team 的獨特優勢（不該丟掉）
+
+1. **任務池自取模式** — 比 superpowers 的序列 dispatch 更靈活
+2. **API Contract 機制** — 前後端共用契約
+3. **多規格書支援** — parallel / sequential / single-focus 決策
+4. **File Scope 概念** — 衝突防護（需從文字聲明升級為機器驗證）
+5. **可追溯性** — Req → Task → QA 雙向綁定（可簡化但概念有價值）
+
+---
+
+## 2. 設計原則
+
+| # | 原則 | 說明 |
+|---|------|------|
+| P1 | **聚焦團隊編排** | 任務規劃、契約管理、衝突防護、追蹤、交付。不複製 superpowers/OpenSpec 已有的輪子 |
+| P2 | **插件獨立 + 探測增強** | 核心流程無硬依賴，探測到其他插件時自動升級體驗，另有 Recommended Integrations 文件 |
+| P3 | **單技能全流程** | 保持一個 SKILL.md 涵蓋 Phase 0-5（團隊編排是有狀態任務，不適合拆成技能鏈） |
+| P4 | **輕量化** | 解決 TL 瓶頸、簡化追蹤、自然退化 |
+| P5 | **文件即記憶** | LLM context 不可信賴，所有決策輸出到實體文件。文件系統 = 唯一 source of truth |
+
+---
+
+## 3. 核心矛盾：LLM 特性 vs Teammate 模式
+
+### LLM 技術特性分析
+
+| 特性 | Fresh Sub-agent | Persistent Teammate |
+|------|----------------|-------------------|
+| Context window 有限且退化 | ✅ 每次乾淨 | ❌ 持續累積 |
+| 指令遵從衰減 | ✅ 短命不受影響 | ❌ 做到第 3-4 個任務時忘記初始指令 |
+| Context compaction 有損 | ✅ 不需要 | ❌ 壓縮後丟失關鍵規則 |
+| Token 成本 | ✅ 每次都短 | ❌ 後期每次通訊成本遞增 |
+| 幻覺風險 | ✅ Context 簡潔 | ⚠️ Context 越複雜越容易幻覺 |
+| 跨任務知識 | ❌ 無 | ✅ 記得之前的任務 |
+
+**殘酷結論**：從純 LLM 技術特性看，fresh sub-agent 幾乎在每個維度都優於 persistent teammate。唯一優勢「跨任務動態協調」會隨 context 退化逐漸消失。
+
+### 但 Teammate 是 dev-team 的靈魂
+
+放棄 teammate 等於放棄：
+- 雙向通訊（中途求助、動態協調）
+- dev-team 與 superpowers 的核心差異化
+
+### 解法：通訊 vs 隔離的價值比較
+
+**通訊是不可替代的**：sub-agent 沒有任何機制能模擬中途通訊。
+**隔離是可補償的**：TL 用 blockedBy 事前防護 + Worker 用 git diff 事後驗證 + QA 檢查 scope。
+
+**結論**：通訊價值 > 隔離價值。Worker 用短命 Teammate（1-task-per-worker）。
+
+---
+
+## 4. 解法探索過程
+
+### 4.1 Worker 模式方向一覽
+
+| 方向 | 核心思路 | 優點 | 缺點 |
+|------|---------|------|------|
+| **A. 短命 Teammate (2-3 tasks)** | Worker 做 2-3 個任務就 shutdown，TL spawn 新的 | 保留 teammate 優勢 + 定期重置 context | TL 管理 worker 輪替；跨代知識傳承問題 |
+| **B. Teammate + 委託執行** | Worker 當協調者，實際 coding 委託 fresh sub-agent | Worker context 輕量，coding 永遠 fresh | Agent 數量翻倍、成本高、複雜度高 |
+| **C. Context 清洗** | 持久 Worker，每接新任務重讀關鍵文件 | 最簡單、改動最小 | 只減緩不解決，第 5-6 個任務仍退化 |
+| **D. 大任務 Sub-agent** | TL 拆成 2-3 個大領域任務，每個 spawn 一個 sub-agent | TL 負擔最低、git worktree 隔離、context 最乾淨 | 失去 teammate 優勢、失敗代價大、趨同 superpowers |
+| **E. 極短命 Teammate + worktree** | 每個 worker 只做 1 個 task，手動切到 worktree | 兼具 teammate 通訊 + git 隔離 | 實現複雜（路徑風險）、自取優勢歸零、overhead 高 |
+| **F. Adaptive Worker Mode** | 每個 task 標記 isolated(sub-agent) 或 collaborative(teammate) | 最大靈活性 | TL 決策不可靠、SKILL.md 複雜度翻倍 → 過度設計 |
+
+**最終選擇**：1-task-per-worker teammate（方向 E 的簡化版，不切 worktree）。
+
+### 4.2 「文件即記憶」原則
+
+**核心洞察**（受 OpenSpec 啟發）：LLM 的 context 不可信賴，應將決策輸出到實體文件，讓文件系統成為唯一的 source of truth。
+
+```
+LLM context = 短期工作記憶（隨時可能丟失）
+文件系統 = 長期記憶（持久可靠）
+```
+
+### 4.3 文件粒度探討
+
+| 方案 | 做法 | 問題 |
+|------|------|------|
+| 分層小文件 | 每個 task、每個 endpoint 獨立文件 | TL 建立成本高，加重 C1 |
+| 4 大文件 | PLAN + CONTRACT + TRACE + DELIVERY | 每次載入多餘內容，浪費 context |
+| 混合 | Task 拆開 + 其他合併 | 規則不一致；和 TaskList description 重複 |
+
+**衍生發現**：追蹤文件過多是 TL 瓶頸的主因之一。
+
+### 4.4 TL 瓶頸深度分析
+
+盤點 TL 全部職責共 **33 項**，橫跨：
+- 團隊協調者（spawn, assign, communicate）
+- 專案管理者（plan, track, report, maintain files）
+- 品質管理者（QA, challenger, contract verification）
+
+**雞生蛋問題**：簡化文件 → Worker 記憶不可靠；強化文件 → TL 負擔加重。
+
+### 4.5 QA 重新設計
+
+**Per-task QA（Sub-agent）**：
+1. Spec compliance — task 描述 vs 實際 code（做對了嗎？）
+2. Code quality — 品質、一致性、scope 遵守（做得好嗎？）
+3. 三方交叉驗證 — 需求 ↔ 測試 ↔ 程式碼（三方互相印證，不信任任何單一 artifact）
+
+**Cross-task consistency**：Phase 4 spawn 全域 review sub-agent（fresh context 一次看全部 code）。
+
+### 4.6 Challenger 命運
+
+- 原始 Challenger 持久 teammate 大部分時間 idle，ROI 可疑
+- 三方交叉驗證（需求 ↔ 測試 ↔ 程式碼）比 TDD 更嚴格
+- **已決定**：移除持久 Challenger，職責併入 per-task QA sub-agent + Phase 4 全域 review
+
+### 4.7 歷史教訓：Leader 獨自跑掉
+
+**v1.0 (pg-leader) 的問題**：
+> "The 'manager who doesn't do work' concept is unnatural for AI agents. AI's instinct is to solve problems, not route them."
+
+**v3.0 評估**：不會重現此問題。v3.0 沒有中間 leader 層，Worker 有明確 coding 任務，QA 是 sub-agent。
+
+### 4.8 技能鏈 vs 單技能
+
+- superpowers 用 8 個獨立技能串成流程（每個技能無狀態，用文件傳遞狀態）
+- dev-team 用 1 個技能涵蓋全流程（TL 需持續掌握團隊狀態）
+
+**結論**：技能鏈適合無狀態流水線，單技能適合有狀態編排。
+
+### 4.9 Adaptive Worker Mode 評估
+
+- TL 預判「Worker 是否需要中途求助」→ 難度高、出錯風險高
+- 標錯的代價不對稱 → TL 保守地都標 collaborative → 退化為純 teammate
+- SKILL.md 複雜度翻倍
+
+**結論**：過度設計。應選一種模式做到最好。
+
+### 4.10 計畫的存續意義
+
+**使用者質疑**：如果計畫必然偏離，為什麼要詳細計畫？
+
+**解答**：區分「靜態文件」和「活資料」：
+- 靜態文件（高層策略）→ 寫一次，不維護
+- 活資料（task 描述、QA 結果）→ 用 TaskList 存（本來就設計來頻繁更新）
+- 活文件（CONTRACT.md）→ 走 amendment 流程
+
+### 4.11 Spawn 開銷量化
+
+| | Sub-agent | 短命 Teammate | 差異 |
+|---|---|---|---|
+| Spawn 次數 | 10 次 | ~10 次（3 worker × 3-4 輪） | 相當 |
+| 每次 spawn tokens | ~25K | ~28K（+team tools/context） | +3K/次 |
+| 通訊開銷 | 0 | ~30K（completion reports + TL 處理） | +30K |
+| **總額外成本** | — | — | **~$1, ~100 秒延遲** |
+
+**結論**：額外開銷可接受。一次成功的中途求助就能省回遠超 $1 的浪費 token。
+
+---
+
+## 5. 已決定的具體設計
+
+### 5.1 追蹤文件方案
+
+| 文件 | 性質 | 寫入者 | 讀取者 |
+|------|------|--------|--------|
+| PLAN.md | 靜態（LLM-native） | TL（Phase 1） | Worker |
+| CONTRACT.md | 活文件（LLM-native） | TL（Phase 2 + amendment） | Worker |
+| DELIVERY.md | 靜態（Markdown） | Phase 5 sub-agent 或 TL | 人類 |
+| logs/*.log.md | Append-only（LLM-native） | 各 agent 各自 | Phase 5 彙整 sub-agent |
+
+- 移除 TRACE / PROCESS_LOG / ISSUES
+- PROCESS_LOG 的非常規事件 → TL 的 tl.log.md
+- ISSUES → 問題直接建為 TaskList 新 task
+
+### 5.2 文件格式策略
+
+**LLM-native 推薦格式**：
+- Structured prefix：`[TYPE]` 每行開頭
+- Flat key-value：避免巢狀
+- 管線分隔（`|`）
+- 區塊標記：`[SECTION]` 比 `## Section` 更 token efficient
+- 無排版裝飾
+
+**人類閱讀解法**：
+
+| 時機 | 解法 |
+|------|------|
+| Phase 1/2 確認 | 產出 temp/ 人類可讀摘要（one-time，不維護） |
+| 流程中 | TL 對話中口頭報告 |
+| Phase 5 交付 | DELIVERY.md（Markdown，唯一正式人類文件） |
+
+### 5.3 DELIVERY 升級為開發回歸文件
+
+**使用者需求**：
+> AI coding 完後開發者回到專案可以明確且規格化地確認做了哪些事，多次開發有共通格式可參考，避免 vibe coding 的黑箱效應。
+
+**DELIVERY.md 8 區塊架構**：
+1. Executive Summary
+2. Requirements → Implementation Mapping（需求→task→檔案的完整鏈路）
+3. API Contract（最終版，從 LLM-native 轉人類可讀）
+4. Plan Drift Log（計畫偏移紀錄：原始 vs 實際）
+5. QA Cycle Report（每 task 的 pass/fail 循環 + 問題修復）
+6. File Change Summary（新增/修改的檔案 + 摘要）
+7. Agent Metrics（團隊組成、成本、時間）
+8. Known Issues & Future Work
+
+### 5.4 Worker 生命週期
+
+| 項目 | 決定 |
+|------|------|
+| Worker 壽命 | 1 task per worker |
+| Shutdown 觸發 | task 完成即 shutdown |
+| 重生機制 | 不存在（每個 task spawn 新 worker） |
+| Task 指派 | TL 在 spawn 時指定（非自取） |
+
+### 5.5 Task 粒度
+
+以 File Scope 為錨點，用客觀可數的指標取代主觀判斷：
+- 每個 task 的 ALLOWED files ≤ 5 個
+- 聚焦一個明確功能點（一句話可描述）
+- \> 5 個 ALLOWED files → 強制拆分
+- 1 個 ALLOWED file 且邏輯簡單 → 合併進相鄰 task
+
+### 5.6 PLAN 內容
+
+**包含**：專案目標、架構決策、命名規範、關鍵約束、跨 task 共用資源
+**不包含**：其他 task 詳細描述、TL 決策推理、Agent Metrics 相關
+估計大小：~500-1500 tokens（LLM-native 格式）
+
+### 5.7 Race Condition
+
+**Task 搶佔**：1-task-per-worker 完全消除（TL 指派制）。
+
+**File 衝突**：三層防護
+- 事前：TL 確保 ALLOWED files 不重疊（有重疊 → blockedBy）
+- 事中：Worker 遵守 file scope（需改 scope 外 → SendMessage TL）
+- 事後：QA 檢查 file scope 遵守
+
+**Contract 修改競爭**：策略 C+D — TL 判斷受影響 Worker → shutdown → spawn 新 Worker 用新 contract + QA 事後驗證所有相關 task 的 contract compliance。
+
+**QA 時間點**：保持即時 QA（浪費最壞 ~$0.40，節省 ~$1-3，ROI 正面）。
+
+### 5.8 Phase 結構（6 → 5 Phase）
+
+| Phase | 名稱 | 說明 |
+|-------|------|------|
+| P0 | 偵察 | 偵測 explorer / PROJECT_MAP（不變） |
+| P1 | 需求分析 + 任務規劃 | PLAN.md（LLM-native）+ temp 人類摘要 |
+| P2 | API Contract | CONTRACT.md（LLM-native）+ temp 人類摘要。Skip if 無 API |
+| P3 | 開發執行 | TL spawn Worker 循環 + 即時 QA（合併原 P3+P4） |
+| P4 | 全域審查 | 全域 review + Contract consistency check（合併原 P5+P6 部分） |
+| P5 | 交付 | DELIVERY.md 產出 + cleanup |
+
+### 5.9 TL 流程簡化
+
+**Phase 3 TL 流程**：
+1. 從 TaskList 挑可執行 task → 同時 spawn ≤ 3 Worker
+2. 等待 Worker 完成/求助
+3. 完成 → spawn QA → 處理結果（PASS/FAIL）
+4. Contract change → 終止受影響 Worker → 修改 → spawn 新 Worker
+5. 重複直到所有 task 完成
+
+**職責從 33 項降到 ~15 項**。
+
+### 5.10 自然退化（不設 LITE/STANDARD）
+
+流程根據條件自然簡化：
+- task 少 → Worker 少
+- 無 API → skip Phase 2
+- task ≤ 2 → skip Phase 4 全域 review
+- PLAN 始終產出（文件即記憶原則，不可選）
+
+使用者可指定既存規範文件位置 + PROJECT_MAP。
+
+### 5.11 既有專案的規範混亂處理
+
+- Worker 的 READONLY 列表包含規範文件 + 相鄰實際 code
+- 以周圍實際 code 風格為準（不盲從規範文件）
+- TL 在 PLAN 中記錄發現的規範不一致
+- Worker 發現時 append 到 log
+- DELIVERY 的 Audit Trail 呈現不一致現象
+
+### 5.12 測試策略：分離測試
+
+**Per-task 新流程**：
+```
+1. TL spawn test-agent（sub-agent）
+   → 讀 task description + PLAN + CONTRACT
+   → 設計紅綠測試、邊界測試、error case
+   → 寫入測試檔案
+
+2. TL spawn Worker（teammate）帶上 task + 測試檔案
+   → 讀 PLAN + CONTRACT + 測試
+   → 寫 code 通過所有測試
+   → 通知 TL 完成
+
+3. TL spawn QA（sub-agent）
+   → 三方交叉驗證（需求 ↔ test ↔ code）
+   → 寫 qa-task-N.log.md
+   → 回傳 PASS/FAIL
+```
+
+### 5.13 小修項處理
+
+| 項目 | 修正 |
+|------|------|
+| M2: Phase skip 對齊 | Phase 2: SKIP IF 此需求不涉及任何 API endpoint |
+| M3: STOP RULE | 改正面規則：完成 task → 報告；遇問題 → 報告；收到純確認 → 不回覆繼續工作 |
+| M4: 成本預估 | Phase 1 結尾 TL 呈現 task 數量和預估 spawn 數，移除費用相關 |
+| L1: peer_list | Worker prompt 明確禁止 peer 通訊 |
+| L2: Template 重複載入 | Prompt template 直接嵌入 spawn 指令（不需 Glob+Read） |
+| L3: Pricing 硬編碼 | 完全移除。不在 SKILL 中提及任何價格 |
+
+### 5.14 Metrics 設計
+
+每個 agent 記錄 model + input + output + time，能記的記，不能的標 n/a：
+
+```
+[METRICS] model=xxx | input=xxx | output=xxx | duration=xxxs
+```
+
+- Sub-agents（test/QA/delivery）：精確 token + duration
+- Workers（teammate）：n/a token + wall-clock duration
+- TL：不記錄（就是 session 本身）
+- **完全移除費用計算**，不估算
+
+### 5.15 探測增強
+
+| 偵測目標 | Glob 路徑 | Phase | 升級行為 |
+|---------|----------|-------|---------|
+| explorer skill | `**/skills/explorer/SKILL.md` | P0 | 有 → 用 explorer 偵察 |
+| PROJECT_MAP.md | `**/PROJECT_MAP.md` | P0 | 有 → 跳過偵察直接讀取 |
+| superpowers TDD | `**/skills/test-driven-development/SKILL.md` | P1 | 有 → test-agent 嚴格 TDD |
+| reviewer skill | `**/skills/reviewer/SKILL.md` | P1 | 有 → 納入規範文件 |
+| .standards/ 目錄 | `.standards/**` | P1 | 有 → 讀取納入 PLAN |
+| OpenSpec SDD | `**/docs/specs/*.md` | P1 | 有 → 可作為需求來源 |
+
+偵測結果寫入 PLAN.md 的 `[INTEGRATIONS]` 區塊。
+
+### 5.16 模型選用
+
+| Agent | Model | 理由 |
+|-------|-------|------|
+| TL | **Opus** | 規劃 + 判斷 + 管理，需要最強推理 |
+| Worker | **Sonnet** | Coding 足夠，成本效益最佳 |
+| test-agent | **Opus** | 邊界測試設計需要想像力，品質優先 |
+| QA per-task | **Sonnet** | Checklist 驅動審查，Sonnet 足夠 |
+| QA 全域 | **Opus** | 全局一致性判斷，只跑一次 |
+| DELIVERY sub | **Sonnet** | 結構化彙整，不需強推理 |
+
+不使用 Haiku（DELIVERY 是使用者唯一看到的文件，品質不該省）。
+
+---
+
+## 6. 全部 35 項決定彙整
+
+| # | 決定 | 決策者 | 輪次 |
+|---|------|--------|------|
+| 1 | 全面改版 v3.0 | 使用者 | 1 |
+| 2 | 聚焦團隊編排 | 使用者+Claude | 1 |
+| 3 | 插件獨立 + 探測增強 | 使用者 | 1 |
+| 4 | 單技能全流程 | Claude+使用者確認 | 1 |
+| 5 | 文件即記憶 | 使用者提出 | 1 |
+| 6 | API Contract 獨立 | 使用者指出 | 1 |
+| 7 | QA 全部用 sub-agent | Claude+使用者確認 | 1 |
+| 8 | 移除 Challenger | Claude+使用者確認 | 1 |
+| 9 | 三方交叉驗證 QA | 使用者提出 | 1 |
+| 10 | Worker 用 Teammate（非 sub-agent） | 使用者+Claude 確認 | 1 |
+| 11 | 靜態/活資料分離 | Claude+使用者確認 | 1 |
+| 12 | Adaptive Mode 是過度設計 | Claude+使用者確認 | 1 |
+| 13 | 追蹤文件：PLAN + CONTRACT + DELIVERY + logs/ | Claude 提案+使用者確認 | 2 |
+| 14 | 移除 TRACE / PROCESS_LOG / ISSUES | Claude+使用者確認 | 2 |
+| 15 | 分散式 append-only log（每 agent 各自） | 使用者提出 | 2 |
+| 16 | LLM-native 格式（所有工作文件） | 使用者提出 | 2 |
+| 17 | temp 人類摘要（Phase 1/2 確認用，不維護） | 使用者提出 | 2 |
+| 18 | DELIVERY 升級為開發回歸文件（8 區塊） | Claude 提案+使用者確認 | 2 |
+| 19 | Log 文件為純 LLM 格式，不考量人類讀者 | 使用者提出 | 2 |
+| 20 | 雙格式維護踢出選項 | 使用者決定 | 2 |
+| 21 | 1 task per worker | 使用者提出 | 2 |
+| 22 | Task 粒度：ALLOWED files ≤ 5 錨點 | Claude 提案+使用者確認 | 2 |
+| 23 | PLAN 精簡（~500-1500 tokens），Worker 必讀 | Claude+使用者確認 | 2 |
+| 24 | File 衝突三層防護 + Contract change C+D 策略 | Claude+使用者確認 | 2 |
+| 25 | 即時 QA（ROI 正面） | 使用者確認 | 2 |
+| 26 | 5 Phase（合併組建+開發，合併 contract check+全域 review） | Claude+使用者確認 | 2 |
+| 27 | TL 職責精簡 ~15 項，同時 ≤ 3 Worker | Claude+使用者確認 | 2 |
+| 28 | 自然退化（不設 LITE/STANDARD） | 使用者傾向 | 2 |
+| 29 | 使用者可指定既存規範位置 + PROJECT_MAP | 使用者提出 | 2 |
+| 30 | 規範混亂：以實際 code 為準 + log 紀錄不一致 | 使用者決定 | 2 |
+| 31 | 分離測試：test-agent 先寫 test → Worker 寫 code → QA 審查 | 使用者決定 | 2 |
+| 32 | 小修項：M2/M3/M4/L1/L2/L3 修正方案 | Claude+使用者確認 | 2 |
+| 33 | Metrics：agent 一行 model+input+output+time，移除所有費用 | 使用者提出 | 2 |
+| 34 | 探測增強：6 個偵測目標，結果寫入 PLAN | Claude+使用者確認 | 2 |
+| 35 | 模型選用：Opus(TL/test/QA全域) + Sonnet(Worker/QA per-task/DELIVERY) | 使用者決定 | 2 |
+
+---
+
+## 7. 決策依賴圖（最終版）
+
+```
+Worker 模式 ✅ 1-task-per-worker teammate
+  ├─→ Task 粒度 ✅ ALLOWED files ≤ 5
+  ├─→ Race condition ✅ 三層防護 + C+D
+  ├─→ PLAN 內容 ✅ 精簡 ~500-1500 tokens
+  └─→ Worker prompt → 推至 writing-plans
+
+追蹤文件方案 ✅ PLAN + CONTRACT + DELIVERY + logs/
+  ├─→ 格式策略 ✅ LLM-native + temp 人類摘要 + DELIVERY Markdown
+  ├─→ Log 設計 ✅ 分散式 append-only，LLM-optimized
+  ├─→ DELIVERY 升級 ✅ 開發回歸文件 8 區塊
+  └─→ 雙格式維護 ✅ 踢出選項
+
+Phase 結構 ✅ 5 Phase（P0-P5）
+  ├─→ TL 流程簡化 ✅ ~15 項職責，≤ 3 Worker
+  ├─→ 自然退化 ✅ 不設 LITE/STANDARD
+  └─→ 既存規範處理 ✅ 以實際 code 為準 + log 紀錄
+
+QA 設計 ✅ 完整確定
+  ├─→ 測試策略 ✅ 分離測試（test-agent → Worker → QA）
+  ├─→ 即時 QA ✅ ROI 正面
+  ├─→ QA prompt → 推至 writing-plans
+  └─→ Test-agent prompt → 推至 writing-plans（新角色）
+
+探測增強 ✅ 6 個偵測目標
+模型選用 ✅ Opus(TL/test/QA全域) + Sonnet(其餘)
+小修項 ✅ M2/M3/M4/L1/L2/L3 + Metrics + Pricing 移除
+```
+
+**所有核心設計決策已完成（35 項）。**
+
+---
+
+## 8. 推至 Design Doc / Implementation 的事項
+
+| 議題 | 說明 |
+|------|------|
+| Worker prompt 重設計 | 反映 1-task、PLAN 必讀、分離測試、log 寫入 |
+| QA prompt 重設計 | 三方交叉驗證 checklist + log 寫入 |
+| Test-agent prompt 設計 | 新角色（Opus）：紅綠測試 + 邊界 + error case |
+| Recommended Integrations 文件 | 列出可搭配的插件及整合方式 |
+
+---
+
+## 附錄：對話脈絡與關鍵轉折
+
+> 本節記錄使用者在討論中的關鍵提問、洞見和方向性決策，保留思考脈絡。
+> `D#` 為[完整對話紀錄](2026-03-02-v3-dialogue-log.md)中的對話編號。
+
+### A.1 定位與差異化
+
+1. **「在討論各個處理方式前，先來討論核心目標」** `D3`
+   - 使用者拒絕直接跳入細節，要求先釐清插件的存在意義。
+
+2. **「此 SKILL 應當具有其不同的價值，而不是單純的複製其他已有的輪子」** `D4`
+   - 關鍵轉折：將討論從「如何修 bug」轉向「dev-team 在三套工具生態系中的獨特定位」。
+   - 觸發了三套工具（superpowers / OpenSpec / touchfish-skills）的核心價值比較分析。
+
+3. **「同意，應聚焦在 Teammate 功能上，但該不該和其他插件耦合這件事有討論空間」** `D5`
+   - 確認 teammate 協作是核心方向，同時提出耦合風險議題。
+
+4. **「方案一和三結合呢」**（探測增強 + Recommended Integrations 文件）`D6`
+   - 使用者自己提出混合方案，解決了硬依賴 vs 完全獨立的取捨。
+
+### A.2 LLM 技術特性的深入追問
+
+5. **「superpowers 沒有開發流程的技能嗎？還是他只是把技能拆開，沒有整合成一個技能中涵蓋完整流程？」** `D10`
+   - 觸發了對 superpowers 8 個開發流程技能的完整研究。引出「技能鏈 vs 單技能」的架構比較。
+
+6. **「以 LLM 的特性來說，兩種方式的優缺點」** `D11`
+   - 使用者指的是「技能鏈 vs 單技能」，澄清於 `D12`。
+
+7. **「其他兩個插件的核心價值呢？」** `D9`
+   - 推動完整的三套工具核心價值對比，確立 dev-team 的差異化定位。
+
+### A.3 核心矛盾的發現與深掘
+
+8. **「在此階段放棄 teammate 功能是否整個插件就用不太到 teammate 了？」** `D7`
+   - 確認了「teammate 是 dev-team 的靈魂」這個約束。
+
+9. **「blockedBy 這個功能是官方出的對吧…如果整個插件的並行度低，是否該探討存續意義」** `D8`
+   - 深層追問：不只問「怎麼修」，而是質疑「修完後還有沒有價值」。
+
+10. **「先解決核心矛盾」** `D14`
+    - 明確指示優先處理「LLM 特性 vs Teammate 模式」根本矛盾。
+
+### A.4 使用者的原創洞見
+
+11. **「因為 LLM 的 context 和 memory 不可信賴，那該採用文件化的方式，採用節點輸出決策至實體文件，防止遺忘」** ★ `D15`
+    - **最重要的原創洞見**。「文件即記憶」原則由此誕生。
+
+12. **「有沒有可能，拆成明確範圍的小文件，依照各階段的需求讀取所需」** `D19`
+    - 推動了文件粒度的深入討論。
+
+13. **「API 契約會不會在實作時發現問題而需要增刪？」** `D18`
+    - 精準指出 API Contract 是「活文件」，直接改變了文件架構設計。
+
+14. **「真的不嚴重嗎？還有說到 TL 的負擔問題，除了這些事情外，TL 還有負責什麼」** `D21`
+    - 觸發了 TL 全部 33 項職責的完整盤點。
+
+15. **「也就是說這個功能是針對 QA 的對嗎？」** `D24`
+    - 精確地將 TRACE 矩陣的價值歸結為「QA 完整性檢查」。
+
+16. **「同意但我要確認，superpowers 的 TDD 模式是屬於先訂下測試並信任。我有想到新增一個 QA(Challenger) teammate 去核對需求和測試和程式碼」** ★ `D26`
+    - **第二個重要原創洞見**：三方交叉驗證（需求 ↔ 測試 ↔ 程式碼），比 TDD 更嚴格。
+
+### A.5 Worker 模式的持續探索
+
+17. **「你回頭看下 git 或版本紀錄，我一開始採用的是 TL 只負責通訊，下放給各個 LEADER，但有遇到 LEADER 會獨自跑掉的問題」** `D28`
+    - 引入歷史教訓，要求對 v3.0 做「歷史風險回測」。
+
+18. **「如果生成 opus or sonnet sub-agent 然後分給他大任務而不是小小 task 呢？」** ★ `D31`
+    - **第三個原創構想**：跳出「多小 task」框架。
+
+19. **「嘗試用極短命 teammate，仿造子代理只能活一個任務，然後必須讓它們各自切去其他分支」** ★ `D32`
+    - **第四個原創構想**：試圖結合 teammate 的通訊 + sub-agent 的隔離。
+
+20. **「兩種模式不都要由 TL 建立 WORKER 嗎？」** `D30`
+    - 迫使分析聚焦在「建立之後的互動模式」差異上。
+
+### A.6 自適應模式與計畫價值的深層質疑
+
+21. **「自適應模式雖然看似完美，但要確認 LLM 執行時的達成度和複雜度帶來的問題」** `D36`
+    - 務實質疑，結論：應選一種模式做到最好。
+
+22. **「如果認同無論再好的計畫也會在實作時充滿意外，此前提下計劃模式的存續意義？」** ★ `D39`
+    - **第五個重要質疑**：直接挑戰了 Phase 1-3 詳細規劃的存在意義。
+
+23. **「要回到價值取捨，teammate 的通訊價值是否大於 sub-agent 的隔離價值」** `D39`
+    - 與 #22 同一條訊息中的第二個議題。觸發了「通訊不可替代 vs 隔離可補償」的分析。
+
+24. **「子代理可接受，但我想知道 teammate 的通訊帶來的價值程度，畢竟官方特地推出 agent-teams 的功能」** `D38`
+    - 引入 Anthropic 的設計意圖作為考量因素。（注意：時序上先於 #22-23）
+
+25. **「認可。但想了解 Spawn 開銷的具體細節與花費」** `D40`
+    - 要求量化成本後最終確認 Worker 用短命 Teammate。
+
+### A.7 第二輪探討中的重要對話
+
+26. **「全面改版 (v3.0)」** `D2` — 初始範圍決定。
+27. **「仍傾向 Teammate」** `D37` — Claude 建議轉向 sub-agent，使用者明確推翻。
+28. **「我希望在整個任務結束後能留下完整執行紀錄…這和模型開銷似乎可以歸為同一議題 [Audit]」** `D46` — Audit 需求的起源。
+29. **「每個 AI 都有一份 log」** `D48` — 分散式 log 架構的起源。
+30. **「這些 log 文件應設計為專門提供給 LLM 模型最佳適用，不考量人類為讀取者」** `D51` — LLM-native 格式原則。
+31. **「考慮將所有 LLM 會讀寫到的文件設計為純 LLM 的最佳格式」** `D52` — 推動 LLM-native vs 雙格式分析。
+32. **「Human 這份屬於 temp 性質，不在過程中進行維護。最終交付階段再進行對人類文件的產生」** `D57` — 文件格式策略最終定案。
+33. **「避免大量 Vibe coding 後造成的程式碼龐大以致人類全部閱讀的困難」** `D58` — DELIVERY 升級的根本動機。
+34. **「如果只給一個任務，這個任務的範圍要多大？」** `D62` — 確認 1-task-per-worker 並開啟 Task 粒度討論。
+35. **「進入已有專案下開發…常常會有維護不佳導致規範好幾套版本」** `D76` — 既有專案規範混亂問題。
+36. **「考慮分離避免同源…I.先設計紅綠測試…II.寫 Code III.QA 審查」** `D82` — 分離測試的完整流程構想。
+37. **「Opus: TL、Test-agents、QA 全域 / 其他有需要用 haiku 嗎？」** `D92` — 模型選用決策。

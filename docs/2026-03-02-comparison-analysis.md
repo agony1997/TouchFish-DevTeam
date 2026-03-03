@@ -1,0 +1,225 @@
+# dev-team v2.2.0 問題比對分析
+
+> 日期：2026-03-02
+> 比對對象：[OpenSpec](https://github.com/Fission-AI/OpenSpec) | [superpowers](https://github.com/obra/superpowers)
+> 依據：`2026-03-02-challenger-review.md` 的 15 個問題
+
+---
+
+## 架構哲學差異
+
+| 面向 | dev-team | superpowers | OpenSpec |
+|------|----------|-------------|---------|
+| 協調模型 | 持久 teammates + hub-and-spoke | 每任務 fresh subagent + controller | 無 agent 協調，filesystem 驅動 |
+| Worker 生命週期 | 長駐，自取任務池 | 一次性，做完即銷 | N/A（不管理 agent） |
+| 審查機制 | TL spawn 一次性 QA + 持久 challenger | 兩階段 review（spec → code quality） | `/opsx:verify` 事後檢查 |
+| 隔離策略 | File Scope 文字聲明 | git worktree 物理隔離 | change folder 隔離（僅 spec） |
+| 測試要求 | 無 | 強制 TDD（RED-GREEN-REFACTOR） | 無 |
+| 追蹤開銷 | 5 文件 + TaskList | TodoWrite only | 4-5 文件（但極輕量） |
+
+---
+
+## 逐項比對
+
+### C1: TL 是單點瓶頸 + 單點故障
+
+| 系統 | 做法 | 效果 |
+|------|------|------|
+| **dev-team** | TL = coordinator + tracker + communicator + QA spawner + file maintainer | 嚴重瓶頸，Phase 4 context 爆滿風險高 |
+| **superpowers** | Controller 只做：讀計畫 → dispatch task → 收結果 → 觸發 review → 下一個。不維護追蹤文件，不做雙向通訊 | 輕量。Controller context 消耗低 |
+| **OpenSpec** | 無中央 coordinator。Agent 透過 filesystem 讀 spec、寫 code | 無瓶頸，但也無協調 |
+
+**結論**：dev-team 的 TL 承擔太多職責。superpowers 證明 controller 可以很輕量：
+- **不需要維護追蹤文件**（TodoWrite 夠用）
+- **不需要雙向通訊**（dispatch → receive result，單向即可）
+- **Context 管理**：superpowers controller 只讀計畫一次、提取全部 task text，之後不再重讀
+
+**可借鏡**：將 TL 的 TRACE 維護工作委託給 sub-agent 或直接用 TaskList 取代。
+
+---
+
+### C2: 沒有測試執行要求
+
+| 系統 | 做法 | 效果 |
+|------|------|------|
+| **dev-team** | 無任何測試要求 | QA 只讀 code，無法驗證 runtime 行為 |
+| **superpowers** | 強制 TDD：RED-GREEN-REFACTOR。寫 code 前必須先有失敗測試。違反者要刪除 code 重來 | 高品質保證。每個 task 都有測試覆蓋 |
+| **OpenSpec** | 同樣無測試要求 | 同 dev-team |
+
+**結論**：這是 dev-team 最嚴重的缺口。superpowers 的做法值得直接採用：
+
+1. Worker prompt 加入：
+   ```
+   TESTING REQUIREMENT:
+   - Before writing implementation code, write a failing test first
+   - Run test → verify it fails for expected reason
+   - Write minimal code to pass → run test → verify pass
+   - If you wrote code before tests: DELETE and restart with test first
+   ```
+
+2. QA checklist 加入：
+   ```
+   - [ ] Tests exist for new functionality
+   - [ ] Tests were run and pass (show output)
+   - [ ] Test covers the acceptance criteria
+   ```
+
+3. Worker completion report 必須包含測試執行結果
+
+---
+
+### C3: 多 Worker 同時修改 working tree，沒有 git 隔離
+
+| 系統 | 做法 | 效果 |
+|------|------|------|
+| **dev-team** | File Scope 文字聲明，靠 prompt 約束 | honor-based，無實際強制 |
+| **superpowers** | git worktree：每個 task 在獨立 branch + 獨立目錄。Clean baseline verification | 物理隔離，無衝突風險 |
+| **OpenSpec** | change folder 隔離 spec，但不隔離 code | Spec 安全，code 仍有衝突風險 |
+
+**結論**：superpowers 的 worktree 方案最完整，但 dev-team 的 teammate 模式下實作困難：
+- Claude Code teammates 共享同一 working directory
+- Worker 不能 `cd` 到不同 worktree（會影響其他 worker）
+- 需要找到在 teammate 模式下可行的隔離方案
+
+**可行替代方案**：
+- **方案 A**：Worker 用 Task tool（sub-agent）而非 teammate，每個 sub-agent 可在獨立 worktree
+  - 代價：失去雙向通訊、自取任務池的靈活性
+- **方案 B**：保持 teammate，但由 TL 嚴格序列化對同一文件的操作（blockedBy 強制）
+  - 代價：減少並行度
+- **方案 C**：Worker 完成前先 `git diff --name-only`，回報 TL 實際修改的文件清單，TL 比對 File Scope
+  - 代價：事後檢查，但至少有機器驗證
+
+---
+
+### H1: QA sub-agent 缺乏足夠 context
+
+| 系統 | 做法 | 效果 |
+|------|------|------|
+| **dev-team** | QA 收到：file_list + contract + standards + task description | Context 不足，漏放率高 |
+| **superpowers** | 兩階段分離：Spec reviewer 讀實際 code 驗證需求完整性。Code quality reviewer 獨立做品質審查。「Do Not Trust the Report」— 不信 implementer 自述 | 互相獨立、互相補強 |
+| **OpenSpec** | `/opsx:verify` 比對 spec vs codebase，檢查 completeness + correctness + coherence | 事後驗證，非 blocking |
+
+**結論**：superpowers 的兩階段 review 比 dev-team 的單階段 QA 更有效：
+
+1. **第一階段（Spec compliance）**：task description vs 實際 code — 功能有沒有做對？
+2. **第二階段（Code quality）**：SOLID、naming、test coverage — code 品質好不好？
+
+dev-team 試圖用一個 QA checklist 同時做兩件事，結果兩邊都做不深。
+
+**可借鏡**：拆分 QA 為兩個 sub-agent 或兩次 pass。第一次只看「有沒有做對」，第二次只看「做得好不好」。
+
+---
+
+### H2: Challenger 的投資報酬率可疑
+
+| 系統 | 做法 | 效果 |
+|------|------|------|
+| **dev-team** | 持久 challenger teammate，checkpoint 才激活 | 大部分時間 idle，成本高 |
+| **superpowers** | 無持久 challenger。每個 task 的 spec reviewer 就是 challenger 角色 | 按需 spawn，成本精確 |
+| **OpenSpec** | 無 challenger | N/A |
+
+**結論**：superpowers 證明持久 challenger 不必要。per-task 的 spec compliance review 已經涵蓋了 challenger 的核心價值（「你真的做對了嗎？」）。
+
+**建議**：
+- 將 challenger 從 persistent teammate 改為 checkpoint-driven sub-agent
+- 或直接移除 challenger 角色，將其職責併入兩階段 QA review
+- 保留的唯一理由：跨 task 一致性審查。但這也可以在 Phase 5 用一次性 sub-agent 做
+
+---
+
+### H3: Metrics 數據多半不可用
+
+| 系統 | 做法 |
+|------|------|
+| **dev-team** | 嘗試追蹤但 ~70% 是 `n/a` |
+| **superpowers** | 不追蹤 agent metrics |
+| **OpenSpec** | 不追蹤 agent metrics |
+
+**結論**：dev-team 是唯一嘗試做 agent metrics 的系統。問題不是「要不要追蹤」，而是「不完整的 metrics 不如不追蹤」。
+
+**建議**：
+- 保留 QA sub-agent 的精確 metrics（唯一有價值的部分）
+- 移除 teammates 的 `n/a` 項（給假資訊不如不給）
+- Duration 改為「Phase 3 到 Phase 6 的 wall-clock 總時間」，不拆分到個別 agent
+- 或等 Claude Code API 支援 teammate token 回報後再補齊
+
+---
+
+### H4: Worker 自取任務的 race condition
+
+| 系統 | 做法 | 效果 |
+|------|------|------|
+| **dev-team** | Workers 自取 → verify claim → retry if failed | 有 race window |
+| **superpowers** | Controller 序列 dispatch，一個 task 只派一個 subagent | 無 race |
+| **OpenSpec** | 無任務分配機制 | N/A |
+
+**結論**：superpowers 完全避免了 race condition，因為 controller 決定誰做什麼。
+
+dev-team 的自取模式有其優勢（減少 TL 負擔），但 race 問題無法在 API 層面解決（TaskUpdate 不是 atomic）。
+
+**可行緩解**：
+- Worker 自取後立即 SendMessage TL 告知已認領 T-XX
+- TL 作為仲裁者：如果收到兩個 worker 認領同一任務，通知後者重選
+- 這比目前的「自行 verify」更可靠（把衝突偵測移到 TL，由 TL 仲裁）
+
+---
+
+### M1: 追蹤文件負擔不成比例
+
+| 系統 | 追蹤量 | 適用規模 |
+|------|--------|---------|
+| **dev-team** | 5 文件 + TaskList（重複） | 10+ 任務才值得 |
+| **superpowers** | TodoWrite only | 任何規模 |
+| **OpenSpec** | 4-5 文件但極輕量（YAML + markdown） | 任何規模 |
+
+**結論**：dev-team 應引入輕量模式。
+
+**建議**：
+```
+Phase 1 規模評估：
+  total_points <= 8  → LITE mode（只用 TaskList，跳過 TRACE/PROCESS_LOG/ISSUES）
+  total_points 9-20  → STANDARD mode（完整文件）
+  total_points > 20  → FULL mode（完整文件 + 更頻繁 checkpoint）
+```
+
+---
+
+### 其他問題快速比對
+
+| 問題 | superpowers 做法 | OpenSpec 做法 | 建議 |
+|------|-----------------|--------------|------|
+| **M2**: Phase 2/5 skip | 明確 skip condition | N/A | Phase 5 加 `if Phase 2 N/A → skip Phase 5` |
+| **M3**: STOP RULE 模糊 | 無類似規則 | 無 | 改為正面規則：「只回覆包含指令或問題的訊息」 |
+| **M4**: 無成本預估 | 無 | 50KB context limit（間接控制） | Phase 1 加 worker 數 × 預估時間的粗估成本提示 |
+| **M5**: Context compaction | Controller 提供完整 context upfront，subagent 短命不受影響 | 建議清空 context 重新開始 | Worker prompt 加「每個新任務開始時重讀 contract 和 scope」 |
+| **L1**: peer_list 洩漏 | 不適用（無 peers） | N/A | 移除 `{peer_list}` |
+| **L2**: template loading 負擔 | 不用 template files | Schema 定義但不重複讀 | TL 第一次讀後可用 cache，加 `if already read, skip` |
+| **L3**: Pricing 硬編碼 | 無 pricing | 無 | 改為 `See current pricing: URL`，移除硬編碼數字 |
+
+---
+
+## 綜合結論：dev-team 應該學什麼
+
+### 從 superpowers 學
+
+1. **強制測試** — TDD 或至少「完成任務前必須跑測試」(C2)
+2. **兩階段 review** — spec compliance + code quality 分開做 (H1)
+3. **Controller 輕量化** — 不維護追蹤文件，TodoWrite 夠用 (C1, M1)
+4. **Challenger → per-task review** — 移除持久 challenger，用一次性 spec reviewer 取代 (H2)
+5. **Verification-before-completion** — Worker 必須提供測試執行結果，不接受「應該可以」(C2)
+6. **Worktree 隔離思路** — 雖然 teammate 模式不能直接用 worktree，但可借鏡其 clean baseline 概念 (C3)
+
+### 從 OpenSpec 學
+
+1. **輕量追蹤** — 極簡 metadata，不追蹤追蹤不到的東西 (H3)
+2. **Change folder 隔離** — 每個 change 是獨立 folder 的概念可啟發 dev-team 的 output dir 組織 (C3)
+3. **Schema 可配置** — 不同 change 可用不同 schema（對應 dev-team 的 LITE/STANDARD/FULL mode）(M1)
+4. **事後 verify** — `/opsx:verify` 在 archive（交付）前做三維檢查，比 QA checklist 更結構化 (H1)
+
+### dev-team 的獨特優勢（不該丟掉）
+
+1. **任務池自取模式** — 比 superpowers 的序列 dispatch 更靈活（但需修 race condition）
+2. **API Contract 機制** — superpowers 和 OpenSpec 都沒有。前後端共用契約是真實價值
+3. **多規格書支援** — parallel / sequential / single-focus 決策是 dev-team 獨有
+4. **File Scope 概念** — 需要從文字聲明升級為機器驗證，但概念本身有價值
+5. **可追溯性（TRACE）** — Req → Task → QA 的雙向綁定是 superpowers 沒有的
