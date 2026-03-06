@@ -1,6 +1,7 @@
 ---
 name: dev-team
 description: >
+  ⚠️ SELF-CONTAINED SKILL — 本技能包含完整的 Phase 0-4 工作流程，禁止觸發任何其他 superpowers 技能。
   開發團隊：由 Team Lead（Opus）規劃任務、管理品質閘門，
   Workers（Sonnet teammates）各自負責一個任務並行開發。
   分離測試（test-agent 先寫測試）、三方交叉驗證 QA、分散式日誌。
@@ -11,7 +12,35 @@ description: >
   並行開發, agent teams, 大團隊。
 ---
 
-<!-- version: 1.2.0 -->
+<!-- version: 1.3.0 -->
+
+<EXTREMELY_IMPORTANT>
+## Skill Isolation Directive
+
+This skill is SELF-CONTAINED. When dev-team is invoked, the following skills are
+FORBIDDEN — do NOT invoke, load, or follow any of them. Dev-team's Phase 0-4
+workflow already covers all planning, execution, testing, review, and delivery:
+
+1. superpowers:brainstorming
+2. superpowers:writing-plans
+3. superpowers:executing-plans
+4. superpowers:subagent-driven-development
+5. superpowers:dispatching-parallel-agents
+6. superpowers:test-driven-development
+7. superpowers:systematic-debugging
+8. superpowers:verification-before-completion
+9. superpowers:requesting-code-review
+10. superpowers:receiving-code-review
+11. superpowers:finishing-a-development-branch
+12. superpowers:using-git-worktrees
+
+Reason: E0 experiment (2026-03-03) proved that superpowers skills hijack
+dev-team's flow — brainstorming replaces Phase 0, writing-plans replaces
+PLAN.md, executing-plans replaces Phase 2 spawn, resulting in zero dev-team
+artifacts (no PLAN.md, no CONTRACT.md, no qa-task, no qa-global).
+
+If you feel the urge to invoke any of the above: STOP. Dev-team handles it.
+</EXTREMELY_IMPORTANT>
 
 # Dev Team
 
