@@ -1,0 +1,17 @@
+{
+  "name": "touchfish-dev-team",
+  "version": "1.5.0",
+  "owner": {
+    "name": "agony1997"
+  },
+  "description": "開發團隊：由 Team Lead（Opus）指揮 Workers（Sonnet teammates）並行開發，結合分離測試、三方交叉驗證 QA、context 預算控管，完成大型功能的全流程開發。",
+  "plugins": [
+    {
+      "name": "dev-team",
+      "version": "1.5.0",
+      "source": "./",
+      "description": "多角色 Agent 團隊協作框架 — 分離測試、三方交叉驗證 QA、LLM-native 文件架構",
+      "tags": ["dev-team", "multi-agent", "team", "TDD", "QA", "parallel-development"]
+    }
+  ]
+}
