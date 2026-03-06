@@ -12,7 +12,7 @@ description: >
   並行開發, agent teams, 大團隊。
 ---
 
-<!-- version: 1.4.0 -->
+<!-- version: 1.5.0 -->
 
 <EXTREMELY_IMPORTANT>
 ## Skill Isolation Directive
@@ -133,8 +133,16 @@ After context compaction, TL MUST re-read `temp/tl-state.md` + `TaskList` before
    - **Granularity anchor**: ALLOWED files ≤ 5 per task. >5 → must split. 1 file + trivial → merge into adjacent.
    - Each task description includes `File Scope: ALLOWED + READONLY`.
    - Two tasks need same file → same worker OR blockedBy.
+   - **Complexity estimation**: assign each task LOW, MED, or HIGH:
+     - LOW: backend CRUD, config, utility; ≤3 ALLOWED files; no complex mocking.
+     - MED: cross-module integration, auth/security; or 4-5 ALLOWED files.
+     - HIGH: frontend UI components, complex framework mocking, or TL judges >2x average duration.
+     Record `complexity` + `reason` in PLAN `[TASK]` lines.
 
 10. Read `references/plan-template.md` → write PLAN.md (LLM-native).
+    **Wave sub-batching**: when a wave contains mixed complexity (LOW/MED + HIGH),
+    split into sub-batches: `Na=LOW/MED tasks | Nb=HIGH tasks`.
+    Homogeneous waves (all same complexity) → no split.
 
 11. Write `temp/plan-summary.md` (human-readable, for confirmation only).
 
@@ -168,6 +176,13 @@ future versions.
 never full file content. Agents read PLAN/CONTRACT/logs from disk themselves.
 TL context should grow only by short summaries (task ID + verdict + file list), not by
 full agent outputs. This prevents TL from hitting context limits before Phase 3.
+
+**Sub-batch execution rule**: TL spawns agents per PLAN sub-batch order.
+Within a sub-batch → parallel spawn (current behavior).
+Between sub-batches → sequential: fully process batch `a` results
+(test-agent → worker → QA for all tasks in batch) before spawning batch `b`.
+This prevents slow agents from blocking fast agents' successors.
+If PLAN has no sub-batches for a wave, spawn all tasks in parallel (default).
 
 1. **Per-task execution loop** (≤ 3 Workers concurrent — tentative, subject to empirical tuning):
 
