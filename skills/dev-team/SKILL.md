@@ -114,8 +114,8 @@ After context compaction, TL MUST re-read `temp/tl-state.md` + `TaskList` before
    - Technical assumptions
    → AskUserQuestion: confirm understanding. Adjust until aligned.
 
-5. AskUserQuestion: output directory (default: `docs/dev-team/<feature>/`).
-   Create `logs/` subdirectory. All files date-prefixed `YYYY-MM-DD-`.
+5. AskUserQuestion: output directory (default: `docs/dev-team/YYYY-MM-DD-HHmmss/`).
+   Create `logs/` subdirectory.
 
 6. TeamCreate: `"dev-<project>-<feature>"`. Init `logs/tl.log.md`.
 

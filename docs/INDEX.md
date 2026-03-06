@@ -13,7 +13,9 @@
 | v2.2.0 | v0.4.0 | task pool + Challenger 架構 |
 | v3.0 | v1.0.0 | 首個正式發布（完全重設計） |
 | v1.1.0 | v1.1.0 | 分離測試 + 三方 QA + 獨立 repo |
-| v1.2.0 | v1.2.0 | 當前版本（批判審核後改進） |
+| v1.2.0 | v1.2.0 | 批判審核後改進 |
+| v1.3.0 | v1.3.0 | Skill 隔離指令（反 superpowers 截斷） |
+| v1.4.0 | v1.4.0 | E1 基線測試後改進（context 預算、compaction 恢復、impl-notes） |
 
 ## 當前有效文件
 
@@ -22,6 +24,15 @@
 | [v1.1 設計決策紀錄](2026-03-03-v1.1-design-rationale.md) | design | 挑戰者審查後的四項主要變更 + 兩項附帶改進 |
 | [v1.1 批判審核報告](2026-03-03-v1.1-review-critique.md) | review | 系統性批判審核，含架構、prompt、文件一致性等質疑（決策完成） |
 | [改版驗證 Checklist](checklist-release.md) | checklist | 每次改版後的逐項驗證清單 |
+
+## 實驗紀錄
+
+| 實驗 | 日期 | 版本 | 結果 | 位置 |
+|------|------|------|------|------|
+| E0 | 2026-03-03 | v1.2.0 | superpowers 攔截，dev-team 從未載入 | [experiment/e0/](experiment/e0/) |
+| E1 | 2026-03-06 | v1.3.0 | 442/442 PASS，7 issues → 5 fixed in v1.4.0 | [experiment/e1/](experiment/e1/) |
+
+詳見 [experiment/README.md](experiment/README.md)。
 
 ## 設計歷史（v0.4 → v1.0 設計過程）
 

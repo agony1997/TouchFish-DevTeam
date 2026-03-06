@@ -3,7 +3,7 @@
 > 多角色 Agent 團隊協作框架 — 分離測試、三方交叉驗證 QA、LLM-native 文件架構
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Skill-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
 
 Claude Code 技能插件：由 Team Lead（Opus）指揮 Workers（Sonnet teammates）並行開發，
@@ -24,6 +24,9 @@ Claude Code 技能插件：由 Team Lead（Opus）指揮 Workers（Sonnet teamma
 - **LLM-native 文件格式**：`[TYPE] key=value` 格式設計以減少 token 用量（待驗證）
 - **分散式日誌**：每個 agent 維護自己的 log，取代集中式追蹤文件
 - **需求澄清步驟**：Phase 0 自動輸出理解摘要並確認，避免基於錯誤理解拆任務
+- **Context 預算控管**：TL 當 router 不當 relay，所有 agent 只返回摘要，防止 context 爆滿
+- **Compaction 恢復機制**：tl-state.md 持久化狀態，context 壓縮後可自動恢復
+- **Skill 隔離指令**：明確禁止 superpowers 技能攔截，確保 dev-team 流程完整執行
 
 ## 使用流程
 
@@ -45,7 +48,7 @@ Phase 4              Phase 3                    │
 | 角色 | Model | 職責 |
 |------|-------|------|
 | **Team Lead (TL)** | Opus | PM：需求澄清、任務規劃、API 契約、spawn 所有 agents、品質閘門 |
-| **test-agent** | Opus | 分離測試：先寫測試（RED），Worker 再寫程式通過（GREEN） |
+| **test-agent** | Opus | 分離測試：先寫測試（RED），Worker 再寫程式通過（GREEN）。寫 impl-notes 提示框架陷阱 |
 | **worker-N** | Sonnet | 開發 Worker：1 任務 1 生命，寫程式碼通過測試，完成前 scope 自驗 |
 | **qa-task-N** | Opus | 三方交叉驗證：需求 ↔ 測試 ↔ 程式碼 |
 | **qa-global** | Opus | 全域審查：跨任務一致性、契約合規性 |
@@ -70,8 +73,7 @@ TouchFish-DevTeam/
 │       └── log-templates.md
 ├── docs/                              # 設計文件與決策紀錄
 │   ├── INDEX.md                       # 文件索引（版本對照 + 完整清單）
-│   ├── 2026-03-03-v1.1-design-rationale.md    # design: v1.1 設計決策
-│   ├── 2026-03-03-v1.1-review-critique.md     # review: v1.1 批判審核
+│   ├── experiment/                    # 實驗紀錄（E0, E1, ...）
 │   └── ...                            # 設計歷史文件（詳見索引）
 ├── README.md
 ├── CHANGELOG.md
@@ -80,32 +82,42 @@ TouchFish-DevTeam/
 
 ## 設計理念
 
-v1.2.0 經過系統性批判審核，核心設計原則：
+v1.4.0 經過 E1 基線測試（24 agents, 442 tests, ~1h19m）驗證並改進，核心設計原則：
 
-1. **完全獨立** — 移除所有外部 plugin 偵測，消除測試矩陣爆炸（2^4 = 16 種組合 → 1 種）
+1. **完全獨立** — 移除所有外部 plugin 偵測 + 明確禁止 superpowers 技能攔截
 2. **文件至上** — 不信任 LLM context/memory，PLAN.md 和 DELIVERY.md 是 agent 間溝通的唯一可靠媒介
 3. **前置驗證** — Worker scope 自驗在 Worker 層面攔截違規，而非等 QA 事後抓，顯著降低重做成本
 4. **穩定知識內建** — TDD RED-GREEN-REFACTOR 是穩定的，直接內建比依賴外部 skill 更可靠
-5. **為實證留空間** — execution strategy 設計為可調參數，先上線收集基線再決定優化方向
+5. **Context 預算控管** — TL 當 router 不當 relay，防止 context 在 Phase 3 前爆滿
+6. **Compaction 恢復力** — tl-state.md 持久化關鍵狀態，context 壓縮後可自動恢復
+7. **為實證留空間** — execution strategy 設計為可調參數，先上線收集基線再決定優化方向
+
+## 實驗紀錄
+
+| 實驗 | 版本 | 結果 | 說明 |
+|------|------|------|------|
+| E0 | v1.2.0 | superpowers 攔截 | dev-team 從未載入，superpowers:brainstorming 取代整個流程 |
+| E1 | v1.3.0 | 442/442 tests PASS | 基線測試成功，發現 7 個 issues（5 個已修復於 v1.4.0） |
+
+詳見 [docs/experiment/](docs/experiment/)。
 
 ## 關鍵設計決策
 
-以下決策經 v1.1 挑戰者審查 + v1.2 批判審核確立：
+以下決策經 v1.1 挑戰者審查 + v1.2 批判審核 + E1 實測確立：
 
 | 決策 | 選項 | 結論 | 理由 |
 |------|------|------|------|
 | 外部 plugin 耦合 | 完全獨立 / 硬耦合 / 介面契約 | **完全獨立** | 可選偵測是最差設計模式，16 種組合無法測試 |
 | qa-task 模型 | Sonnet / Opus | **Opus** | 品質閘門 6 步驟複雜推理，應用最強模型 |
 | Challenger 角色 | 持久 teammate / per-task sub-agent / 移除 | **移除** | 分離測試 + 三方 QA + 全域審查已覆蓋其價值 |
-| Worker 隔離 | git worktree / 文字聲明 + QA 驗證 | **文字聲明 + QA** | teammate 模式下無法用 worktree，檔案級自驗 + QA scope creep 檢查 = 兩層防禦 |
+| Worker 隔離 | git worktree / 文字聲明 + QA 驗證 | **文字聲明 + QA** | teammate 模式下 worktree 複雜度高，file scope + parallel awareness + QA = 多層防禦 |
 | Metrics 記錄 | Sub-agent 自報 / TL 記錄 | **TL 記錄** | Sub-agent 取不到自身 token 消耗，TL 可從 Agent tool 回傳取得 |
-| Worker 逾時 | 時間門檻 / 訊息無回應偵測 | **2 msgs no reply** | 時間門檻可能誤殺正在正常工作的 Worker |
-| Git 策略 | 框架管理 / 使用者自理 | **使用者自理** | dev-team 不 auto-commit/push，使用者自行切分支 |
-| Fix task context | 新 Worker 無 context / TL 摘要傳遞 | **TL 摘要寫入 task** | TL 已有 QA 結果，只改變傳遞方式，無額外 context 負擔 |
+| TL context 管理 | 全量轉發 / 路徑轉發 | **路徑轉發** | E1 證實全量轉發導致 context compaction，TL 當 router 不當 relay |
+| P3 issue 修復 | TL 直接修 / 建 fix task | **建 fix task** | E1 中 TL 自修膨脹 context，且違反 scope 隔離原則 |
 
 ## 待驗證假設
 
-以下設計基於理論推論，尚無實測數據支撐：
+以下設計基於理論推論，尚無完整實測數據支撐：
 
 | 假設 | 理論依據 | 驗證方式 |
 |------|---------|---------|
@@ -114,18 +126,6 @@ v1.2.0 經過系統性批判審核，核心設計原則：
 | ≤ 3 Workers 併發為最佳值 | 暫定經驗值，無實測依據 | 不同併發數下的完成時間 / token / 品質比較 |
 | 2 msgs no reply = crash | 比時間門檻更好的存活偵測 | 實際執行中的誤判率觀察 |
 | 分離測試消除自我驗證偏誤 | Opus 寫測試、Sonnet 寫實作，角色分離 | 有/無分離測試的 QA 通過率比較 |
-
-## 未來功能
-
-| 功能 | 說明 | 前置條件 |
-|------|------|---------|
-| 恢復模式 | Phase 0 偵測現有 PLAN + logs → 續做未完成任務 | 需定義恢復狀態機 |
-| Execution strategy 切換 | `batch-test-first`（所有測試一次寫完）等替代方案 | 需 `parallel-per-task` 基線數據 |
-| Worker 併發數調整 | 實測後決定 3 是否為最佳值 | 需多次執行數據 |
-| Token savings 驗證 | LLM-native vs Markdown 的 token 計數對比 | 需實際文件樣本 |
-| 逾時策略實測 | 觀察「2 msgs no reply」在實際執行中的效果 | 需累積執行紀錄 |
-
-詳細設計決策過程：[v1.1 設計決策紀錄](docs/2026-03-03-v1.1-design-rationale.md) ｜ [v1.2 批判審核報告](docs/2026-03-03-v1.1-review-critique.md)
 
 ## License
 

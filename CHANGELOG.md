@@ -10,6 +10,36 @@
 > 現已根據 git 歷史重新分配版本號：0.x 為原型快速迭代期，1.0.0 為首個正式發布。
 > 設計文件中出現的「v3.0」即為本版本號重設後的 v1.0.0。
 
+## [1.4.0] - 2026-03-06
+
+### 新增
+
+- **Context budget rule**：TL 當 router 不當 relay，傳路徑不傳內容，防止 TL context 在 Phase 3 前爆滿
+- **Minimal return**：test-agent / Worker / qa-task / qa-global 只返回摘要，詳細內容寫檔
+- **tl-state.md 恢復機制**：TL 在每次 phase 轉換、agent spawn/shutdown 時更新 `temp/tl-state.md`，context compaction 後 re-read 恢復狀態
+- **test-agent impl-notes**：test-agent 完成測試後寫 `temp/impl-notes-N.md`，提供框架陷阱和 mock 策略提示給 Worker
+- **Worker PARALLEL AWARENESS**：Worker 只跑自己的測試檔案，不跑全套、不修改其他 Worker 的檔案
+- **P0 Cross-cutting concerns**：Phase 0 新增步驟識別橫切關注點（error handling、auth、logging），記錄在 PLAN `[CROSS-CUTTING]`
+- **P1 AC cross-check**：CONTRACT 撰寫前逐條比對 acceptance criteria，確保每個 AC 有對應 endpoint
+
+### 變更
+
+- **TL 禁止直接修復**：Phase 3 qa-global 發現的問題必須走 fix task → spawn fix Worker，TL 不得自己 Edit 程式碼
+- **test-agent 語法驗證提升**：OUTPUT 段落新增必要步驟 — 返回前必須跑每個測試檔確認無 syntax/compile error
+- **預設輸出目錄**：從 `docs/dev-team/<feature>/` 改為 `docs/dev-team/YYYY-MM-DD-HHmmss/`
+- **qa-global 自讀檔案**：TL 不轉發內容，qa-global 從磁碟自行讀取所有檔案
+
+## [1.3.0] - 2026-03-06
+
+### 新增
+
+- **Skill Isolation Directive**：`<EXTREMELY_IMPORTANT>` 區塊明確禁止 12 個 superpowers 技能，防止 superpowers:brainstorming 等攔截 dev-team 流程
+- **Description 前綴**：加入「⚠️ SELF-CONTAINED SKILL」標記
+
+### 修復
+
+- **E0 skill 衝突問題**：E0 實驗證實 superpowers 技能會完全取代 dev-team 的 Phase 0-4 流程，v1.3.0 的反截斷指令解決此問題
+
 ## [1.2.0] - 2026-03-03
 
 ### 新增
