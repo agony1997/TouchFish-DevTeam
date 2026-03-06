@@ -31,6 +31,7 @@
 |------|------|------|------|------|
 | E0 | 2026-03-03 | v1.2.0 | superpowers 攔截，dev-team 從未載入 | [experiment/e0/](experiment/e0/) |
 | E1 | 2026-03-06 | v1.3.0 | 442/442 PASS，7 issues → 5 fixed in v1.4.0 | [experiment/e1/](experiment/e1/) |
+| E2 | 2026-03-06 | v1.4.0 | 334/334 PASS，global QA 首次通過，6 observations | [experiment/e2/](experiment/e2/) |
 
 詳見 [experiment/README.md](experiment/README.md)。
 
