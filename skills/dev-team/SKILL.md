@@ -12,7 +12,7 @@ description: >
   並行開發, agent teams, 大團隊。
 ---
 
-<!-- version: 1.3.0 -->
+<!-- version: 1.4.0 -->
 
 <EXTREMELY_IMPORTANT>
 ## Skill Isolation Directive
@@ -79,11 +79,21 @@ Pure acknowledgment → do NOT reply, continue working.
 | `{date}-DELIVERY.md` | Static | Markdown | delivery-sub (P4) |
 | `logs/*.log.md` | Append-only | LLM-native | Each agent |
 | `temp/*.md` | Ephemeral | Markdown | TL (P0/P1 confirm) |
+| `temp/tl-state.md` | Living | LLM-native | TL (all phases) |
 
 Working files use LLM-native format: `[TYPE] key=value | key=value`.
 DELIVERY.md is the only Markdown output (sole human-facing document).
 Read `references/log-templates.md` for log format spec.
 TL records sub-agent metrics: after each sub-agent (test-agent, qa-task, qa-global, delivery-sub) returns, log its usage from Agent tool response to tl.log.
+
+**Compaction resilience**: TL maintains `temp/tl-state.md` as a recovery checkpoint.
+Update it on EVERY phase transition, agent spawn, and agent shutdown:
+```
+[STATE] phase=P2 | wave=3 | contract-version=2
+[ACTIVE] role=worker-5 | agent-id={id} | task=T5 | type=teammate
+[ACTIVE] role=qa-global | agent-id={id} | type=sub-agent
+```
+After context compaction, TL MUST re-read `temp/tl-state.md` + `TaskList` before any action.
 
 ## Phase 0: Project Understanding + Task Planning (TL solo)
 
@@ -115,7 +125,11 @@ TL records sub-agent metrics: after each sub-agent (test-agent, qa-task, qa-glob
 
 8. Scope check: significant portions already implemented → AskUserQuestion to adjust.
 
-9. TaskCreate: break into tasks.
+9. **Cross-cutting concerns**: identify shared strategies (error handling format,
+   auth mechanism, logging pattern, etc.) and record in PLAN under `[CROSS-CUTTING]`.
+   Workers read PLAN → follow unified approach. No extra agent cost.
+
+10. TaskCreate: break into tasks.
    - **Granularity anchor**: ALLOWED files ≤ 5 per task. >5 → must split. 1 file + trivial → merge into adjacent.
    - Each task description includes `File Scope: ALLOWED + READONLY`.
    - Two tasks need same file → same worker OR blockedBy.
@@ -138,6 +152,8 @@ future versions.
 **SKIP IF** no API endpoints. Log `[LOG] phase=P1 | event=skipped | reason=no-api` in tl.log.
 
 1. Read `references/contract-template.md` → write CONTRACT.md (LLM-native).
+   Cross-check: walk each acceptance criterion → verify at least one endpoint covers it.
+   Missing coverage → add endpoint or query param before proceeding.
 
 2. Write `temp/contract-summary.md` (human-readable, for confirmation).
 
@@ -148,14 +164,24 @@ future versions.
 
 ## Phase 2: Development Execution
 
+**Context budget rule**: TL acts as a router, not a relay. Pass file PATHS between agents,
+never full file content. Agents read PLAN/CONTRACT/logs from disk themselves.
+TL context should grow only by short summaries (task ID + verdict + file list), not by
+full agent outputs. This prevents TL from hitting context limits before Phase 3.
+
 1. **Per-task execution loop** (≤ 3 Workers concurrent — tentative, subject to empirical tuning):
 
    a. **test-agent** (Opus, sub-agent): Read `prompts/test-agent.md`, fill vars.
-      Input: task description + PLAN + CONTRACT → Output: test file paths + `logs/test-agent-N.log.md`.
+      Input: task description + PLAN path + CONTRACT path → writes test files + `logs/test-agent-N.log.md`.
+      Also writes `temp/impl-notes-N.md` (framework gotchas, mock strategies for tricky tests).
+      **Minimal return**: test-agent writes full output to `temp/test-agent-N-output.md`,
+      returns to TL ONLY: test file paths (one per line) + pass/fail count. No full content.
 
    b. **Worker** (Sonnet, teammate): Read `prompts/worker.md`, fill vars.
-      Input: PLAN + CONTRACT + task + test files → writes code + `logs/worker-N.log.md`
+      Input: PLAN path + CONTRACT path + task + test file paths → writes code + `logs/worker-N.log.md`
       → SendMessage TL completion → shutdown.
+      **Minimal report**: SendMessage to TL ONLY: task ID, status (done/blocked),
+      tests passed/failed count, changed files list. No code snippets, no explanations.
       Worker MUST run `git diff --name-only` before completion report.
       Compare against ALLOWED files. If out-of-scope files detected:
       → Worker reverts out-of-scope changes and reports to TL.
@@ -164,7 +190,8 @@ future versions.
    c. **QA** (Sonnet, sub-agent): Read `prompts/qa-task.md`, fill vars.
       Three-way verification (req↔test, test↔code, req↔code) + standards compliance.
       Pass `{standards_file_paths}` from PLAN `[SOURCE]` (or "none").
-      → writes `logs/qa-task-N.log.md` → returns PASS/FAIL.
+      → writes `logs/qa-task-N.log.md`.
+      **Minimal return**: PASS or FAIL + if FAIL, one-line summary per issue. No full analysis.
 
 2. QA result: PASS → TaskUpdate completed.
    FAIL → create fix task with QA failure summary in description
@@ -187,11 +214,15 @@ future versions.
 **SKIP IF** total tasks ≤ 2.
 
 1. Spawn qa-global (Opus, sub-agent): Read `prompts/qa-global.md`, fill vars.
-   Input: all changed files + PLAN + CONTRACT + standards files + qa-task logs → cross-task consistency + completeness + standards consistency.
+   Input: PLAN path + CONTRACT path + standards file paths + qa-task log paths + changed file list.
+   qa-global reads all files from disk itself (TL does NOT relay content).
+   Cross-task consistency + completeness + standards consistency.
    Includes optional integration test step (if project has existing test framework).
    Writes `logs/qa-global.log.md`.
+   **Minimal return**: PASS or FAIL + if FAIL, numbered issue list (one line each).
 
 2. Issues → create fix tasks → back to Phase 2.
+   TL MUST NOT fix code directly. Create fix task with qa-global failure summary → spawn fix Worker.
 
 ## Phase 4: Delivery
 

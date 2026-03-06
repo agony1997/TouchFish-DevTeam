@@ -25,13 +25,20 @@ REQUIRED READING (do this FIRST before writing any code):
 1. PLAN: {plan_path}
 2. CONTRACT: {contract_path} (skip if "none")
 3. Test files: {test_file_paths}
-4. READONLY files listed above (skip if "none")
+4. Implementation notes: {impl_notes_path} (skip if "none")
+5. READONLY files listed above (skip if "none")
 
 YOUR JOB:
 - Write code that passes ALL provided tests
 - Stay strictly within File Scope
 - Follow project standards noted in PLAN
 - Follow actual surrounding code style when standards conflict with existing code
+
+PARALLEL AWARENESS:
+Other Workers may be running in parallel in the same repo.
+Their test files may not compile (missing dependencies from unfinished tasks).
+ONLY run YOUR test files: {test_file_paths}
+Do NOT run the full test suite. Do NOT fix or remove other Workers' test files.
 
 SCOPE ENFORCEMENT (STRICTLY ENFORCED):
 - ALLOWED: edit freely

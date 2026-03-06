@@ -51,8 +51,21 @@ TDD DISCIPLINE:
 - Name tests descriptively: "should {expected behavior} when {condition}"
 - RED-GREEN flow: your tests are RED. Worker makes them GREEN. Never write GREEN tests.
 
+IMPLEMENTATION NOTES (write after tests):
+After finishing all test files, write a brief `{impl_notes_path}` containing:
+- Framework gotchas: non-obvious setup, mock strategies, async patterns needed
+- Per-test hints: for any test where the implementation approach is NOT obvious,
+  explain what the test expects and how to satisfy it (e.g., "this test clicks a
+  router-link and asserts navigation — needs createMemoryHistory + await flushPromises")
+- Do NOT write step-by-step implementation plans or code snippets
+- Do NOT duplicate what's already clear from reading the test
+- Keep it short: only cover the tricky parts. If all tests are straightforward, write "None."
+
 OUTPUT:
 - Write test file(s) following project's existing test framework and directory conventions
+- Write implementation notes to `{impl_notes_path}`
+- BEFORE returning: run every test file once. If any file has syntax/compile errors → fix them.
+  Only return when all tests fail for EXPECTED reasons (missing module/class), not syntax errors.
 - Return: list of test file paths created
 
 LOG WRITING:
