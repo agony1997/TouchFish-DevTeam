@@ -1,0 +1,20 @@
+# Backend
+backend/target/
+backend/*.iml
+backend/.mvn/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# dev-team 產出（每次實驗都不同，不追蹤）
+docs/dev-team/

@@ -1,0 +1,13 @@
+spring:
+  profiles:
+    active: dev
+  jpa:
+    open-in-view: false
+
+server:
+  port: 8080
+
+app:
+  jwt:
+    secret: taskflow-jwt-secret-key-for-development-only-change-in-production
+    expiration: 86400000  # 24 hours in milliseconds
