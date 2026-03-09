@@ -1,0 +1,2 @@
+[LOG] task=T3 | event=test-design-start | strategy={approach: "integration tests with @SpringBootTest + @AutoConfigureMockMvc", test-class: "AuthControllerTest", coverage: "AC1-AC14 + GlobalExceptionHandler + ErrorResponse contract + BR7 enumeration prevention", total-planned-tests: 29}
+[LOG] task=T3 | event=test-design-complete | test-files=["taskflow/backend/src/test/java/com/taskflow/controller/AuthControllerTest.java"] | test-count=29 | compile=PASS | red-state=29/29-fail(expected-404)

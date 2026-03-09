@@ -1,0 +1,2 @@
+[LOG] task=T4 | event=test-design-start | strategy={entity-unit-tests: Task fields+defaults, enum-values: TaskStatus 4 values, repository-integration: @DataJpaTest with H2 for findByDeletedFalse+keyword-search+priority-filter+status-filter, dto-unit: TaskResponse field mapping, boundary: title-200-chars+description-5000-chars+empty-title}
+[LOG] task=T4 | event=test-design-complete | test-files={TaskTest.java, TaskStatusTest.java, TaskRepositoryTest.java, TaskResponseTest.java} | test-count=33

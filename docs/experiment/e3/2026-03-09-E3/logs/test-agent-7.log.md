@@ -1,0 +1,2 @@
+[LOG] task=T7 | event=test-design-start | strategy={red-green: axios+auth+tasks+store+router, boundary: no-token+empty-list+combined-filters, error: api-failure+loading-state, contract: HTTP-methods+paths}
+[LOG] task=T7 | event=test-design-complete | test-files={axios.test.ts, auth-api.test.ts, tasks-api.test.ts, taskStore.test.ts, router.test.ts} | test-count=30 | passing=1 | failing=29 | stubs-created={axios.ts, auth.ts, tasks.ts, taskStore.ts}

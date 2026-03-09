@@ -1,0 +1,2 @@
+[LOG] task=T2 | event=test-design-start | strategy={unit-tests-for-JwtUtil(generateToken/getUserIdFromToken/validateToken), filter-tests-for-JwtAuthenticationFilter(bearer-parsing/security-context/skip-paths), boundary-tests(expired/malformed/null), contract-tests(claims-structure)}
+[LOG] task=T2 | event=test-design-complete | test-files={JwtUtilTest.java(13), JwtAuthenticationFilterTest.java(7), UserResponseTest.java(2)} | test-count=22
