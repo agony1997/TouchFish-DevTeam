@@ -215,7 +215,7 @@ qa-global 仍然執行完整測試套件（173 backend + 99 frontend = 272 tests
 
 **建議**: 在 test-agent prompt 中加入規則：「若依賴的類別由其他 task 負責，在測試中使用 mock 而非 stub 實作」。
 
-### E3-I3: Agent cleanup delayed — idle agents accumulate (MED)
+### E3-I3: Agent cleanup delayed — idle agents accumulate (WONTFIX)
 
 **觀察**: 使用者在 04:51:43 指出 TL 有大量未關閉的 teammates。TL batch-cleaned 11 idle agents。另外 test-agent-6 在 delivery 時仍 active，阻塞了 TeamDelete。
 
@@ -224,7 +224,7 @@ qa-global 仍然執行完整測試套件（173 backend + 99 frontend = 272 tests
 2. 延遲 TeamDelete 約 ~30s
 3. 不影響功能但影響使用者體驗
 
-**建議**: 在 TL 的 agent lifecycle 管理中加入「complete 後立即 shutdown」規則，以及 P4 phase 開始前的「cleanup all remaining agents」步驟。
+**建議**: WONTFIX — LLM behavioral limitation。P2 期間 TL 注意力集中在 wave 編排上，cleanup 是低優先背景任務，加更多規則大概率無效且增加 SKILL.md context 壓力。實際影響極低（~30s 延遲），Phase 4 TeamDelete 最終會清理。
 
 ### E3-I4: Test count regression needs monitoring (INFO)
 
@@ -308,9 +308,11 @@ Pipeline idle:     —      → 20%    → 13%     (↓7pp)
 - **E3-I2** (test-agent stubs): 目前無功能影響
 - **E3-I4** (test count): 需在後續實驗確認趨勢
 
-### 可考慮修復（MED priority）
-- **E3-I3** (agent cleanup): 加入 lifecycle cleanup 規則
-- **E2-I5 → B3** (qa-global full suite): 改為只做 cross-task integration checks，信任 per-task QA 結果
+### WONTFIX（LLM behavioral limitation）
+- **E3-I3** (agent cleanup): LLM 注意力特性，加規則無效，影響極低
+
+### WONTFIX（效益不足）
+- **E2-I5 → B3** (qa-global full suite): 省 ~2 min（4%），但 CHECK 6 是最後安全網，大型專案更需要
 
 ### 實驗結論
 
@@ -321,6 +323,6 @@ v1.5.0 的 complexity estimation + sub-batch spawn 機制**有效且超出預期
 4. 每任務效率提升 27%（8.6 → 6.25 min/task）
 
 **dev-team v1.5.0 已達可用品質**。建議的下一步改進（v1.6.0）優先順序：
-1. Agent lifecycle cleanup（E3-I3）
-2. qa-global 優化（E2-I5）
+1. ~~Agent lifecycle cleanup（E3-I3）~~ → WONTFIX (LLM behavioral limitation)
+2. ~~qa-global 優化（E2-I5）~~ → WONTFIX (效益不足，省 ~2 min / 4%)
 3. 超大專案（>10 tasks）驗證

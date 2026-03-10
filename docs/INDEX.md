@@ -16,6 +16,7 @@
 | v1.2.0 | v1.2.0 | 批判審核後改進 |
 | v1.3.0 | v1.3.0 | Skill 隔離指令（反 superpowers 截斷） |
 | v1.4.0 | v1.4.0 | E1 基線測試後改進（context 預算、compaction 恢復、impl-notes） |
+| v1.5.0 | v1.5.0 | E2 對照測試後改進（complexity estimation、sub-batch spawn） |
 
 ## 當前有效文件
 
@@ -24,6 +25,8 @@
 | [v1.1 設計決策紀錄](2026-03-03-v1.1-design-rationale.md) | design | 挑戰者審查後的四項主要變更 + 兩項附帶改進 |
 | [v1.1 批判審核報告](2026-03-03-v1.1-review-critique.md) | review | 系統性批判審核，含架構、prompt、文件一致性等質疑（決策完成） |
 | [改版驗證 Checklist](checklist-release.md) | checklist | 每次改版後的逐項驗證清單 |
+| [E2-I6 Fast-First Spawn 設計](plans/2026-03-06-i6-fast-first-spawn-design.md) | design | complexity estimation + sub-batch wave splitting 設計 |
+| [E2-I6 Fast-First Spawn 實作計畫](plans/2026-03-06-i6-fast-first-spawn-impl.md) | plan | v1.5.0 實作步驟 |
 
 ## 實驗紀錄
 
@@ -32,6 +35,7 @@
 | E0 | 2026-03-03 | v1.2.0 | superpowers 攔截，dev-team 從未載入 | [experiment/e0/](experiment/e0/) |
 | E1 | 2026-03-06 | v1.3.0 | 442/442 PASS，7 issues → 5 fixed in v1.4.0 | [experiment/e1/](experiment/e1/) |
 | E2 | 2026-03-06 | v1.4.0 | 334/334 PASS，global QA 首次通過，6 observations | [experiment/e2/](experiment/e2/) |
+| E3 | 2026-03-09 | v1.5.0 | 272/272 PASS，50min, 0 compaction, 0 TL 介入, all first-pass QA | [experiment/e3/](experiment/e3/) |
 
 詳見 [experiment/README.md](experiment/README.md)。
 

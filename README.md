@@ -74,7 +74,7 @@ TouchFish-DevTeam/
 │       └── log-templates.md
 ├── docs/                              # 設計文件與決策紀錄
 │   ├── INDEX.md                       # 文件索引（版本對照 + 完整清單）
-│   ├── experiment/                    # 實驗紀錄（E0, E1, E2）
+│   ├── experiment/                    # 實驗紀錄（E0, E1, E2, E3）
 │   ├── plans/                         # 設計文件（brainstorming → design doc）
 │   └── ...                            # 設計歷史文件（詳見索引）
 ├── README.md
@@ -84,7 +84,7 @@ TouchFish-DevTeam/
 
 ## 設計理念
 
-v1.5.0 經過 E1 基線測試（442 tests）、E2 對照測試（334 tests, global QA 首次通過）持續迭代。核心設計原則：
+v1.5.0 經過 E1 基線測試（442 tests）、E2 對照測試（334 tests, global QA 首次通過）、E3 驗證測試（272 tests, 8 tasks, 0 compaction, 0 TL 介入, all first-pass QA PASS）持續迭代。核心設計原則：
 
 1. **完全獨立** — 移除所有外部 plugin 偵測 + 明確禁止 superpowers 技能攔截
 2. **文件至上** — 不信任 LLM context/memory，PLAN.md 和 DELIVERY.md 是 agent 間溝通的唯一可靠媒介
@@ -102,7 +102,7 @@ v1.5.0 經過 E1 基線測試（442 tests）、E2 對照測試（334 tests, glob
 | E0 | v1.2.0 | superpowers 攔截 | dev-team 從未載入，superpowers:brainstorming 取代整個流程 |
 | E1 | v1.3.0 | 442/442 tests PASS | 基線測試成功，發現 7 個 issues（5 個已修復於 v1.4.0） |
 | E2 | v1.4.0 | 334/334 tests PASS | v1.4.0 驗證：global QA 首次通過，TL session 快 24%，6 new observations |
-| E3 | v1.5.0 | 待執行 | 驗證 complexity estimation + fast-first sub-batch spawn |
+| E3 | v1.5.0 | 272/272 tests PASS | complexity estimation + sub-batch spawn 驗證：50min, 8 tasks, 0 compaction, 0 TL 介入 |
 
 詳見 [docs/experiment/](docs/experiment/)。
 

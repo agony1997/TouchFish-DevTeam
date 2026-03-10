@@ -10,6 +10,20 @@
 > 現已根據 git 歷史重新分配版本號：0.x 為原型快速迭代期，1.0.0 為首個正式發布。
 > 設計文件中出現的「v3.0」即為本版本號重設後的 v1.0.0。
 
+## [1.5.0] - 2026-03-09
+
+### 新增
+
+- **Complexity estimation**：P0 為每個 task 估算複雜度（LOW/MED/HIGH），記錄 `complexity` + `reason` 於 PLAN `[TASK]` 行
+- **Wave sub-batching**：異質 wave（混合 LOW/MED + HIGH）自動拆為子批次（Na=快, Nb=慢），同質 wave 不拆
+- **Sub-batch execution rule**：P2 按子批次順序執行，批次內平行、批次間循序，避免慢 agent 阻塞快 agent 的後續 pipeline
+
+### 驗證
+
+- **E3 測試**（2026-03-09）：8 tasks, 272/272 tests PASS, ~50min, 0 compaction, 0 TL 介入, all first-pass QA PASS
+- E2-I6（slow agent blocking）完全消除：critical path 提早 15 min，pipeline idle 從 20% 降至 13%
+- 每任務效率 6.25 min/task（E2: 8.6, E1: 11.3）
+
 ## [1.4.0] - 2026-03-06
 
 ### 新增
